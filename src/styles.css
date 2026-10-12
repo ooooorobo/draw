@@ -36,6 +36,15 @@ body {
   gap: 10px;
 }
 
+/*
+ * 그리기 화면은 남는 높이를 전부 캔버스에 준다.
+ * min-height:0이 없으면 flex 자식이 내용 높이 아래로 못 줄어들어 캔버스가 눌린다.
+ */
+.cell {
+  flex: 1;
+  min-height: 0;
+}
+
 .cell-head,
 .cell-foot {
   display: flex;
