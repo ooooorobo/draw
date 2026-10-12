@@ -1,10 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>app</title>
+    <!--
+      maximum-scale / user-scalable: 그리는 중 더블탭·핀치로 페이지가 확대되는 것을 막는다.
+      viewport-fit=cover: iOS 노치 영역까지 캔버스를 쓸 수 있게 한다.
+      (iOS Safari는 user-scalable=no를 무시하므로 입력 계층에서 gesturestart도 함께 막는다)
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>캔버스 PoC</title>
   </head>
   <body>
     <div id="root"></div>
