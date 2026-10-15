@@ -1,32 +1,94 @@
-# React + TypeScript + Vite
+# 캔버스 PoC
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+릴레이 그림 게임의 **그리기 화면 기술 검증용** 프로젝트. 제품 코드가 아니다.
 
-Currently, two official plugins are available:
+여러 명이 한 칸씩 맡아 그려 그림 하나를 완성하는 서비스에서, 가장 불확실한 부분인
+캔버스 입력 계층만 떼어내 먼저 검증한다. 방·링크·공유·서버는 범위 밖이다.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 검증 범위
 
-## React Compiler
+PRD 기준 FR-09(캔버스), FR-10(제출), FR-15(획 순서 재생).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 항목 | 요구사항 |
+| --- | --- |
+| 도구 | 펜 굵기 2종, 색 6개, 지우개, 되돌리기 |
+| 제한 시간 | 칸 크기별 20 / 45 / 60초, 만료 시 자동 제출 |
+| 저장 | 획 데이터로 저장. 최소 획수 미달 시 미저장 |
+| 표시 | 연결점, 경계 띠(옆 칸 가장자리 힌트) |
+| 제스처 | 화면 스크롤과 그리기 제스처가 충돌하지 않을 것 |
 
-## Expanding the Oxlint configuration
+## 실행
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev           # 로컬
+npm run dev -- --host # 실기기 테스트용
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## 구조
+
+```
+src/draw/types.ts     획 데이터 모델 (정규화 좌표 + 시간 + 필압)
+src/draw/engine.ts    렌더링 (hint / committed / visible 3레이어)
+src/draw/pointer.ts   입력 (모바일 / 펜슬 / 인앱 브라우저 대응)
+src/draw/template.ts  PoC 칸 1개. 실제 템플릿은 서버가 내려줄 자리
+src/DrawCell.tsx      그리기 화면
+src/App.tsx           검증용 하네스
+```
+
+`src/draw/` 아래는 React에 의존하지 않는다.
+
+## 설계 판단
+
+**1. 획 데이터로 저장한다**
+
+캔버스를 픽셀 비트맵이 아니라 획의 목록으로 보관한다. FR-15가 "칸을 획 순서대로
+재생해 맞물린 뒤 전체 공개"를 요구하는데, 픽셀로 저장하면 이 연출도 서버 전송도
+불가능하다. 좌표는 칸 기준 정규화 값이라 해상도와 칸 크기에 독립적이다.
+
+**2. 중간점 보간을 멱등으로 만든다**
+
+같은 구간을 다시 그려도 결과가 같게 설계했다. 덕분에 실시간 입력은 마지막 두 구간만
+덧그리면 되고, 프레임 비용이 누적 획 수와 무관하다. 펜슬 240Hz 입력에서 이게 없으면
+획이 쌓일수록 느려진다.
+
+**3. 레이어를 3장으로 나눈다**
+
+지우개는 committed 레이어에만 `destination-out`으로 적용된다. 경계 띠는 옆 사람의
+그림이므로 내 지우개가 지워선 안 된다.
+
+## 모바일 / 펜슬 / 인앱 브라우저 대응
+
+링크 공유로 유입되는 서비스라 카카오톡·인스타그램 인앱 브라우저가 주 실행 환경이다.
+대응은 전부 `src/draw/pointer.ts`와 `src/styles.css`의 기능성 규칙에 모여 있다.
+
+| 문제 | 대응 |
+| --- | --- |
+| 펜슬 240Hz 입력 유실 | `getCoalescedEvents()`로 합쳐진 원본 복원 |
+| 필압 | `pressure` 기반 가변 굵기. 손가락·마우스는 고정 |
+| 손바닥 오입력 | 펜 입력 후 900ms 내 터치 무시 |
+| 멀티터치 | 두 번째 포인터 무시 |
+| 스크롤·줌 충돌 | `touch-action:none` + `passive:false` preventDefault + `gesturestart` 차단 |
+| iOS 핀치 줌 | `user-scalable=no`를 무시하므로 입력 계층에서 별도 차단 |
+| 구버전 웹뷰 | `OffscreenCanvas` 미사용 (iOS 16.4+ 요구) |
+| 캔버스 메모리 | DPR 상한 2 (3x 기기에서 레이어 3장이면 한계 초과) |
+| 주소창 높이 변화 | `100dvh`, `ResizeObserver`로 재계산 |
+| 러버밴드 스크롤 | `overscroll-behavior:none` |
+| 입력 가로채기 | `pointercancel` 복구 |
+
+## 현재 상태
+
+검증 완료(헤드리스 Chromium, CDP 실제 포인터 이벤트):
+터치 드로잉, 팜 리젝션, 멀티터치 차단, 필압 가변 굵기, DPR 상한, 연결점 스냅,
+경계 띠 클립, 자동 제출, 최소 획수 차단, 획 순서 재생.
+
+**실기기 미검증.** Apple Pencil 실제 필압 곡선, iOS Safari의 `user-scalable=no` 무시,
+카카오톡·인스타그램 인앱 웹뷰 동작은 실기기에서 확인해야 한다.
+
+## 참고
+
+- 디자인 요소는 전부 임시다. 색 6개·굵기 2종은 PRD가 개수를 지정해서 넣었고 값은
+  디자이너 작업물로 교체된다. CSS에 남은 것은 터치·뷰포트 관련 기능성 규칙뿐이다.
+- 경계 띠는 고정값이다. 이웃 칸 획 데이터를 받아 바깥 영역에만 렌더하는 경로를
+  증명하는 용도이고, 실제 데이터는 서버 연동 시 연결한다.
+- 프로젝트명 미확정이라 패키지명은 `canvas-poc`다.
