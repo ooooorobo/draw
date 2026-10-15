@@ -1,3 +1,4 @@
+import { quantizeCoord, quantizePoint, quantizeTime } from './quantize.ts'
 import type { CellTemplate, Point, Stroke, StrokeMode, Vec } from './types.ts'
 
 /**
@@ -27,6 +28,12 @@ const SNAP_RATIO = 0.055
 
 /** 필압이 0에 가까워도 선이 사라지지 않게 하는 최소 굵기 배율. */
 const MIN_PRESSURE_SCALE = 0.35
+
+/**
+ * 이 거리보다 가까운 점은 버린다. 정규화 단위.
+ * 양자화 격자(0.0001)보다 훨씬 크므로 양자화가 중복점을 만들지 않는다.
+ */
+const MIN_POINT_DISTANCE = 0.0015
 
 export type Tool = {
   mode: StrokeMode
@@ -338,8 +345,8 @@ export class DrawEngine {
       color: this.tool.color,
       width: this.tool.width,
       device,
-      startedAt: now,
-      points: [{ x: point.x, y: point.y, t: 0, p: pressure }],
+      startedAt: quantizeTime(now),
+      points: [quantizePoint(point.x, point.y, 0, pressure)],
     }
     this.strokes.push(this.live)
     this.drawLiveTail()
@@ -350,9 +357,9 @@ export class DrawEngine {
     const live = this.live
     if (!live) return
     const last = live.points[live.points.length - 1]
-    if (last && Math.hypot(at.x - last.x, at.y - last.y) < 0.0015) return
+    if (last && Math.hypot(at.x - last.x, at.y - last.y) < MIN_POINT_DISTANCE) return
 
-    live.points.push({ x: at.x, y: at.y, t: now - live.startedAt, p: pressure })
+    live.points.push(quantizePoint(at.x, at.y, now - live.startedAt, pressure))
     this.drawLiveTail()
     this.present()
   }
@@ -386,8 +393,8 @@ export class DrawEngine {
     if (tail && live.points.length > 1) {
       const { point, snapped } = this.snap(tail)
       if (snapped) {
-        tail.x = point.x
-        tail.y = point.y
+        tail.x = quantizeCoord(point.x)
+        tail.y = quantizeCoord(point.y)
         this.liveSnapped = true
       }
     }
