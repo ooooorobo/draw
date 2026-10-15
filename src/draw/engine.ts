@@ -35,6 +35,12 @@ const MIN_PRESSURE_SCALE = 0.35
  */
 const MIN_POINT_DISTANCE = 0.0015
 
+/**
+ * 제출물 PNG 한 변(px). 기기와 무관하게 고정한다.
+ * 칸 6개를 모아 합성하려면 모든 칸이 같은 해상도여야 한다.
+ */
+const EXPORT_SIZE = 1024
+
 export type Tool = {
   mode: StrokeMode
   color: string
@@ -505,15 +511,54 @@ export class DrawEngine {
     this.present()
   }
 
-  /** 제출물. 경계 띠(옆 칸 힌트)와 오버레이는 제외하고 내 획만 담는다. */
-  toPNG(): string {
+  /**
+   * 제출물을 고정 해상도로 렌더한다. 경계 띠(옆 칸 힌트)와 오버레이는 제외한다.
+   *
+   * committed 레이어를 그대로 복사하지 않는 이유:
+   *   그 레이어는 기기의 DPR과 뷰포트에 따라 크기가 달라진다. 같은 그림이라도
+   *   아이폰에서 내면 732px, 아이패드에서 내면 1488px이 나온다. 칸 6개를 모아
+   *   한 장으로 합성해야 하는데 칸마다 해상도가 다르면 합성이 성립하지 않는다.
+   *
+   * 배경을 칠하지 않는 이유:
+   *   흰색으로 채우면 칸을 겹칠 때 위 칸의 흰 사각형이 아래 칸을 지운다.
+   *   배경은 합성하는 쪽에서 한 번만 깔아야 한다.
+   */
+  private renderExport(size: number): HTMLCanvasElement {
     const out = document.createElement('canvas')
-    out.width = this.committed.canvas.width
-    out.height = this.committed.canvas.height
+    out.width = size
+    out.height = size
     const ctx = ctxOf(out)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, out.width, out.height)
-    ctx.drawImage(this.committed.canvas, 0, 0)
-    return out.toDataURL('image/png')
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+
+    // paint 계열은 this.size를 기준으로 좌표를 환산한다. 렌더가 동기이고 멱등이라
+    // 잠시 바꿔 쓰고 되돌려도 안전하다.
+    const saved = this.size
+    this.size = size
+    try {
+      ctx.save()
+      this.outlinePath(ctx)
+      ctx.clip()
+      for (const stroke of this.strokes) this.paintStroke(ctx, stroke)
+      ctx.restore()
+    } finally {
+      this.size = saved
+    }
+    return out
+  }
+
+  /** 미리보기/다운로드용. 업로드에는 toBlob을 쓴다. */
+  toPNG(size = EXPORT_SIZE): string {
+    return this.renderExport(size).toDataURL('image/png')
+  }
+
+  /**
+   * 업로드용. data URL은 base64라 실제 바이트보다 33% 크다.
+   * 네트워크로 보낼 때는 Blob을 그대로 보내야 한다.
+   */
+  toBlob(size = EXPORT_SIZE): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      this.renderExport(size).toBlob(resolve, 'image/png')
+    })
   }
 }
