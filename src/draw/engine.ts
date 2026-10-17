@@ -1,5 +1,5 @@
 import { quantizeCoord, quantizePoint, quantizeTime } from './quantize.ts'
-import type { CellTemplate, Point, Stroke, StrokeMode, Vec } from './types.ts'
+import type { CellTemplate, Stroke, StrokeMode, Vec } from './types.ts'
 
 /**
  * 캔버스 렌더링 엔진. React에 의존하지 않는다.
@@ -28,6 +28,18 @@ const SNAP_RATIO = 0.055
 
 /** 필압이 0에 가까워도 선이 사라지지 않게 하는 최소 굵기 배율. */
 const MIN_PRESSURE_SCALE = 0.35
+
+/**
+ * 속도 기반 굵기에서 "가장 빠름"으로 치는 기준. 정규화 거리 / ms.
+ * 칸을 가로지르는 데 약 300ms 걸리는 속도에 해당한다.
+ */
+const SPEED_FAST = 0.003
+
+/** 빠르게 그어도 선이 사라지지 않게 하는 최소 굵기 배율. */
+const MIN_VELOCITY_SCALE = 0.45
+
+/** 속도를 평균 낼 구간(span 수). 길수록 부드럽지만 반응이 둔해진다. */
+const VELOCITY_WINDOW = 5
 
 /**
  * 이 거리보다 가까운 점은 버린다. 정규화 단위.
@@ -191,11 +203,52 @@ export class DrawEngine {
     ctx.restore()
   }
 
-  private lineWidthAt(stroke: Stroke, a: Point, b: Point): number {
+  /**
+   * 손가락·마우스 입력의 속도 기반 굵기 배율.
+   *
+   * 펜에는 필압이 있지만 손가락에는 없다. 그대로 두면 굵기가 완전히 균일한
+   * 선이 나와서 성의 없어 보인다. 실제 펜은 빨리 그으면 가늘고 천천히 그으면
+   * 굵은데, 그 특성을 속도로 흉내낸다.
+   *
+   * 반드시 뒤쪽 점만 본다. drawLiveTail이 새 점이 들어올 때마다 마지막 두 span을
+   * 덧그리는데, 앞쪽 점을 참조하면 나중에 다시 그릴 때 굵기가 달라져
+   * 멱등성이 깨진다(같은 자리에 다른 굵기로 두 번 그려진다).
+   */
+  private velocityScale(stroke: Stroke, index: number): number {
+    const pts = stroke.points
+    const from = Math.max(1, index - VELOCITY_WINDOW + 1)
+    const head = pts[from - 1]
+    const tail = pts[index]
+    if (!head || !tail) return 1
+
+    let distance = 0
+    for (let i = from; i <= index; i++) {
+      const a = pts[i - 1]
+      const b = pts[i]
+      if (a && b) distance += Math.hypot(b.x - a.x, b.y - a.y)
+    }
+
+    // 시간은 ms 정수로 양자화돼 있어 연속된 점이 같은 값을 가질 수 있다. 0 나눗셈 방지.
+    const elapsed = Math.max(1, tail.t - head.t)
+    const ratio = Math.min(1, distance / elapsed / SPEED_FAST)
+    return 1 - (1 - MIN_VELOCITY_SCALE) * ratio
+  }
+
+  private lineWidthAt(stroke: Stroke, index: number): number {
     const base = stroke.width * this.box.span
-    if (stroke.device !== 'pen') return base
-    const p = (a.p + b.p) / 2
-    return base * (MIN_PRESSURE_SCALE + (1 - MIN_PRESSURE_SCALE) * p)
+
+    // 지우개는 굵기가 일정해야 어디까지 지워지는지 예측할 수 있다.
+    if (stroke.mode === 'erase') return base
+
+    if (stroke.device === 'pen') {
+      const cur = stroke.points[index]
+      if (!cur) return base
+      const prev = stroke.points[index - 1] ?? cur
+      const p = (prev.p + cur.p) / 2
+      return base * (MIN_PRESSURE_SCALE + (1 - MIN_PRESSURE_SCALE) * p)
+    }
+
+    return base * this.velocityScale(stroke, index)
   }
 
   /**
@@ -231,7 +284,7 @@ export class DrawEngine {
       ctx.globalCompositeOperation = 'source-over'
       ctx.strokeStyle = stroke.color
     }
-    ctx.lineWidth = this.lineWidthAt(stroke, prev, cur)
+    ctx.lineWidth = this.lineWidthAt(stroke, i)
     ctx.beginPath()
     ctx.moveTo(start.x, start.y)
     ctx.quadraticCurveTo(a.x, a.y, end.x, end.y)
@@ -253,7 +306,7 @@ export class DrawEngine {
       ctx.fillStyle = stroke.color
     }
     ctx.beginPath()
-    ctx.arc(c.x, c.y, this.lineWidthAt(stroke, only, only) / 2, 0, Math.PI * 2)
+    ctx.arc(c.x, c.y, this.lineWidthAt(stroke, 0) / 2, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
   }
@@ -296,6 +349,7 @@ export class DrawEngine {
     ctx.drawImage(this.hint.canvas, 0, 0)
     ctx.drawImage(this.committed.canvas, 0, 0)
     ctx.restore()
+    this.paintLiveTail()
     this.paintOverlay()
   }
 
@@ -355,7 +409,7 @@ export class DrawEngine {
       points: [quantizePoint(point.x, point.y, 0, pressure)],
     }
     this.strokes.push(this.live)
-    this.drawLiveTail()
+    this.commitSettledSpans()
     this.present()
   }
 
@@ -366,12 +420,26 @@ export class DrawEngine {
     if (last && Math.hypot(at.x - last.x, at.y - last.y) < MIN_POINT_DISTANCE) return
 
     live.points.push(quantizePoint(at.x, at.y, now - live.startedAt, pressure))
-    this.drawLiveTail()
+    this.commitSettledSpans()
     this.present()
   }
 
-  /** 진행 중인 획의 마지막 두 span만 덧그린다. 멱등이라 겹쳐 그려도 안전하다. */
-  private drawLiveTail(): void {
+  /**
+   * 진행 중인 획에서 '기하가 확정된' span만 committed에 올린다.
+   *
+   * span i의 끝점은 점 i와 점 i+1의 중간점이다. 즉 점 i+1이 들어와야 span i의
+   * 모양이 정해진다. 확정 전에 미리 그리면, 나중에 제 모양으로 다시 그릴 때
+   * 그 획이 더 가늘면(속도가 빨라졌으면) 먼저 그린 굵은 자국이 안 덮여서 남는다.
+   * 실측으로 획 가장자리에 247px(전체 잉크의 6%)의 잔재가 쌓였다.
+   *
+   * 그래서 확정된 span만 committed에 넣고, 아직 확정 안 된 마지막 span은
+   * paintLiveTail이 화면 레이어에만 그린다. 저장되는 픽셀과 보이는 픽셀이
+   * 어긋나지 않으면서, 선이 손가락을 지연 없이 따라온다.
+   *
+   * 지우개는 예외다. 굵기가 항상 일정해서 덧그려도 잔재가 생기지 않고,
+   * destination-out을 화면 레이어에 쓰면 경계 띠까지 지워버린다.
+   */
+  private commitSettledSpans(): void {
     const live = this.live
     if (!live) return
     const { ctx } = this.committed
@@ -380,12 +448,39 @@ export class DrawEngine {
     ctx.save()
     this.outlinePath(ctx)
     ctx.clip()
-    if (n === 1) {
-      this.paintDot(ctx, live)
-    } else {
-      if (n >= 3) this.paintSpan(ctx, live, n - 2)
-      this.paintSpan(ctx, live, n - 1)
+    if (live.mode === 'erase') {
+      if (n === 1) this.paintDot(ctx, live)
+      else this.paintSpan(ctx, live, n - 1)
+    } else if (n >= 3) {
+      this.paintSpan(ctx, live, n - 2)
     }
+    ctx.restore()
+  }
+
+  /** 아직 확정되지 않은 마지막 span. 화면에만 그리고 committed는 건드리지 않는다. */
+  private paintLiveTail(): void {
+    const live = this.live
+    if (!live || live.mode === 'erase') return
+    const ctx = this.vctx
+    const n = live.points.length
+
+    ctx.save()
+    this.outlinePath(ctx)
+    ctx.clip()
+    if (n === 1) this.paintDot(ctx, live)
+    else this.paintSpan(ctx, live, n - 1)
+    ctx.restore()
+  }
+
+  /** 획이 끝날 때 아직 committed에 없는 마지막 조각을 올린다. */
+  private commitFinalSpan(stroke: Stroke): void {
+    const { ctx } = this.committed
+    const n = stroke.points.length
+    ctx.save()
+    this.outlinePath(ctx)
+    ctx.clip()
+    if (n === 1) this.paintDot(ctx, stroke)
+    else this.paintSpan(ctx, stroke, n - 1)
     ctx.restore()
   }
 
@@ -404,7 +499,10 @@ export class DrawEngine {
         this.liveSnapped = true
       }
     }
+    // 스냅되면 기하가 바뀌므로 이 획의 픽셀을 처음부터 다시 만든다.
+    // 아니면 아직 안 올라간 마지막 조각만 올리면 된다.
     if (this.liveSnapped) this.redrawCommitted()
+    else this.commitFinalSpan(live)
     this.liveSnapped = false
     this.present()
     return live
