@@ -18,6 +18,12 @@ const COLORS = ['#111111', '#e5342b', '#2f6fdd', '#f2b01e', '#2aa34a', '#8b5a2b'
 
 const ERASER_WIDTH = 0.055
 
+/** 형광펜 굵기. 면을 빨리 덮어야 해서 펜보다 훨씬 굵다. */
+const MARKER_WIDTH = 0.09
+
+/** 채우기는 굵기 개념이 없다. 탭한 지점이 속한 닫힌 영역을 칠한다. */
+const FILL_WIDTH = 0
+
 export type SubmitResult = {
   strokes: Stroke[]
   png: string
@@ -163,6 +169,20 @@ export function DrawCell({ template, cellSize, minStrokes, onSubmit }: Props) {
         ))}
         <button
           type="button"
+          aria-pressed={tool.mode === 'marker'}
+          onClick={() => setTool((t) => ({ ...t, mode: 'marker', width: MARKER_WIDTH }))}
+        >
+          형광펜
+        </button>
+        <button
+          type="button"
+          aria-pressed={tool.mode === 'fill'}
+          onClick={() => setTool((t) => ({ ...t, mode: 'fill', width: FILL_WIDTH }))}
+        >
+          채우기
+        </button>
+        <button
+          type="button"
           aria-pressed={tool.mode === 'erase'}
           onClick={() => setTool((t) => ({ ...t, mode: 'erase', width: ERASER_WIDTH }))}
         >
@@ -185,10 +205,10 @@ export function DrawCell({ template, cellSize, minStrokes, onSubmit }: Props) {
             key={color}
             type="button"
             aria-label={color}
-            aria-pressed={tool.mode === 'draw' && tool.color === color}
+            aria-pressed={tool.color === color}
             className="swatch"
             style={{ background: color }}
-            onClick={() => setTool((t) => ({ ...t, mode: 'draw', color }))}
+            onClick={() => setTool((t) => ({ ...t, color }))}
           />
         ))}
       </div>

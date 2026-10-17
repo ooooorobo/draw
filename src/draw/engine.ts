@@ -53,6 +53,31 @@ const MIN_POINT_DISTANCE = 0.0015
  */
 const EXPORT_SIZE = 1024
 
+/**
+ * 손떨림 보정 계수. 0에 가까울수록 많이 눌러주지만 선이 손가락을 늦게 따라온다.
+ * 작은 화면에서 손가락으로 그리면 1~2px 지터가 섞이는데, 그게 그대로 획에 남는다.
+ */
+const STABILIZE_ALPHA = 0.55
+
+/** 획 시작/끝에서 가늘어지는 구간(점 개수). */
+const TAPER_POINTS = 4
+
+/** 테이퍼 구간 끝에서의 굵기 배율. */
+const TAPER_MIN = 0.3
+
+/** 형광펜 불투명도. multiply와 함께 쓴다. */
+const MARKER_ALPHA = 0.45
+
+/** 채우기에서 "비어 있다"로 치는 알파 상한. 색 허용오차 대신 알파만 본다. */
+const FILL_ALPHA_THRESHOLD = 128
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const n = Number.parseInt(full, 16)
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
+}
+
 export type Tool = {
   mode: StrokeMode
   color: string
@@ -92,6 +117,12 @@ export class DrawEngine {
 
   private strokes: Stroke[] = []
   private live: Stroke | null = null
+  /** 손떨림 보정의 직전 출력값. 원본 입력이 아니라 눌러준 값을 누적한다. */
+  private smoothed: Vec | null = null
+  /** 직전 원본 입력. 손을 뗀 자리에 선이 정확히 닿게 하려고 따로 들고 있는다. */
+  private rawLast: Vec | null = null
+  /** 칸 안쪽 픽셀 마스크. 채우기가 칸 밖으로 새지 않게 한다. */
+  private cellMask: Uint8Array | null = null
   /** 획 종료 시 연결점 스냅이 일어났는지. 일어났으면 그 획만 다시 그려야 한다. */
   private liveSnapped = false
 
@@ -162,6 +193,9 @@ export class DrawEngine {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
     }
+
+    // 마스크는 device px 기준이라 크기가 바뀌면 버린다.
+    this.cellMask = null
 
     this.paintHints()
     this.redrawCommitted()
@@ -234,21 +268,41 @@ export class DrawEngine {
     return 1 - (1 - MIN_VELOCITY_SCALE) * ratio
   }
 
+  /**
+   * 획 시작과 끝을 가늘게 만든다. 뭉툭하게 끊긴 선이 "성의 없어 보이는" 주된 원인이다.
+   *
+   * 끝 테이퍼는 획이 끝난 뒤에만 적용한다. 진행 중에는 어디가 끝인지 알 수 없고,
+   * 추측해서 그리면 확정 후 다시 그릴 때 값이 달라져 잔재가 남는다.
+   * 그래서 endStroke에서 committed를 한 번 다시 만든다.
+   */
+  private taperScale(stroke: Stroke, index: number): number {
+    const n = stroke.points.length
+    if (n < TAPER_POINTS * 2) return 1
+    const fromStart = index
+    const fromEnd = stroke === this.live ? Number.POSITIVE_INFINITY : n - 1 - index
+    const d = Math.min(fromStart, fromEnd)
+    if (d >= TAPER_POINTS) return 1
+    return TAPER_MIN + (1 - TAPER_MIN) * (d / TAPER_POINTS)
+  }
+
   private lineWidthAt(stroke: Stroke, index: number): number {
     const base = stroke.width * this.box.span
 
     // 지우개는 굵기가 일정해야 어디까지 지워지는지 예측할 수 있다.
-    if (stroke.mode === 'erase') return base
+    // 형광펜도 일정해야 칠한 면의 농도가 고르다.
+    if (stroke.mode === 'erase' || stroke.mode === 'marker') return base
+
+    const taper = this.taperScale(stroke, index)
 
     if (stroke.device === 'pen') {
       const cur = stroke.points[index]
       if (!cur) return base
       const prev = stroke.points[index - 1] ?? cur
       const p = (prev.p + cur.p) / 2
-      return base * (MIN_PRESSURE_SCALE + (1 - MIN_PRESSURE_SCALE) * p)
+      return base * (MIN_PRESSURE_SCALE + (1 - MIN_PRESSURE_SCALE) * p) * taper
     }
 
-    return base * this.velocityScale(stroke, index)
+    return base * this.velocityScale(stroke, index) * taper
   }
 
   /**
@@ -311,7 +365,139 @@ export class DrawEngine {
     ctx.restore()
   }
 
+  /**
+   * 형광펜. 획 전체를 하나의 path로 만들어 한 번만 stroke한다.
+   *
+   * span마다 따로 칠하면 반투명이 이음매에서 겹쳐 점점이 진해진다.
+   * 한 번의 stroke 호출 안에서는 자기 자신과 겹쳐도 농도가 올라가지 않는다.
+   */
+  private paintMarker(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
+    const pts = stroke.points
+    if (pts.length === 0) return
+    const width = stroke.width * this.box.span
+
+    ctx.save()
+    ctx.globalCompositeOperation = 'multiply'
+    ctx.globalAlpha = MARKER_ALPHA
+    ctx.strokeStyle = stroke.color
+    ctx.fillStyle = stroke.color
+    ctx.lineWidth = width
+
+    if (pts.length === 1) {
+      const c = this.toPx(pts[0]!)
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, width / 2, 0, Math.PI * 2)
+      ctx.fill()
+    } else {
+      ctx.beginPath()
+      const first = this.toPx(pts[0]!)
+      ctx.moveTo(first.x, first.y)
+      for (let i = 1; i < pts.length; i++) {
+        const a = this.toPx(pts[i - 1]!)
+        const b = this.toPx(pts[i]!)
+        ctx.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2)
+      }
+      const last = this.toPx(pts[pts.length - 1]!)
+      ctx.lineTo(last.x, last.y)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  /**
+   * 칸 안쪽 픽셀 마스크. getImageData는 clip을 따르지 않으므로 직접 만든다.
+   * 이게 없으면 채우기가 칸 경계를 넘어 옆 사람 영역까지 칠한다.
+   */
+  private getCellMask(): Uint8Array {
+    if (this.cellMask) return this.cellMask
+    const w = this.committed.canvas.width
+    const h = this.committed.canvas.height
+    const tmp = document.createElement('canvas')
+    tmp.width = w
+    tmp.height = h
+    const tctx = ctxOf(tmp)
+    tctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    tctx.fillStyle = '#000000'
+    this.outlinePath(tctx)
+    tctx.fill()
+    const d = tctx.getImageData(0, 0, w, h).data
+    const mask = new Uint8Array(w * h)
+    for (let i = 0; i < mask.length; i++) mask[i] = (d[i * 4 + 3] ?? 0) > 128 ? 1 : 0
+    this.cellMask = mask
+    return mask
+  }
+
+  /**
+   * 채우기. 탭한 지점에서 ４방향으로 번져나가며 빈 픽셀을 칠한다.
+   *
+   * 색 허용오차 대신 알파만 본다. 안티에일리어싱된 선 가장자리의 색은
+   * 클라이언트와 서버에서 미세하게 다를 수 있지만, "칠해졌나 아닌가"의
+   * 이진 판정은 같게 나온다. 재생과 서버 렌더가 어긋나면 안 되기 때문이다.
+   *
+   * 선에 틈이 있으면 칸 전체로 샌다. 다만 칸 마스크가 바깥을 막으므로
+   * 피해는 그 칸 안으로 한정된다. 되돌리기로 취소할 수 있다.
+   */
+  private paintFill(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
+    const seed = stroke.points[0]
+    if (!seed) return
+    const w = ctx.canvas.width
+    const h = ctx.canvas.height
+    if (w === 0 || h === 0) return
+
+    const mask = this.getCellMask()
+    const px = this.toPx(seed)
+    const sx = Math.round(px.x * this.dpr)
+    const sy = Math.round(px.y * this.dpr)
+    if (sx < 0 || sy < 0 || sx >= w || sy >= h) return
+
+    const start = sy * w + sx
+    if (mask[start] !== 1) return
+
+    const img = ctx.getImageData(0, 0, w, h)
+    const d = img.data
+    if ((d[start * 4 + 3] ?? 0) > FILL_ALPHA_THRESHOLD) return
+
+    const { r, g, b } = hexToRgb(stroke.color)
+    const seen = new Uint8Array(w * h)
+    const stack: number[] = [start]
+    seen[start] = 1
+
+    while (stack.length > 0) {
+      const p = stack.pop()!
+      const o = p * 4
+      d[o] = r
+      d[o + 1] = g
+      d[o + 2] = b
+      d[o + 3] = 255
+
+      const x = p % w
+      const y = (p / w) | 0
+      const visit = (q: number) => {
+        if (seen[q] === 1 || mask[q] !== 1) return
+        if ((d[q * 4 + 3] ?? 0) > FILL_ALPHA_THRESHOLD) return
+        seen[q] = 1
+        stack.push(q)
+      }
+      if (x > 0) visit(p - 1)
+      if (x < w - 1) visit(p + 1)
+      if (y > 0) visit(p - w)
+      if (y < h - 1) visit(p + w)
+    }
+    ctx.putImageData(img, 0, 0)
+  }
+
+  /** 점 하나 또는 통째로 칠하는 모드의 첫 프레임. */
+  private paintAtomic(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
+    if (stroke.mode === 'fill') this.paintFill(ctx, stroke)
+    else if (stroke.mode === 'marker') this.paintMarker(ctx, stroke)
+    else this.paintDot(ctx, stroke)
+  }
+
   private paintStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, upto?: number): void {
+    if (stroke.mode === 'fill' || stroke.mode === 'marker') {
+      this.paintAtomic(ctx, stroke)
+      return
+    }
     const last = upto ?? stroke.points.length - 1
     if (last <= 0) {
       this.paintDot(ctx, stroke)
@@ -399,6 +585,8 @@ export class DrawEngine {
     this.cancelReplay()
     const { point, snapped } = this.snap(at)
     this.liveSnapped = snapped
+    this.smoothed = { x: point.x, y: point.y }
+    this.rawLast = { x: point.x, y: point.y }
     this.live = {
       id: `s${this.strokes.length}_${Math.round(now)}`,
       mode: this.tool.mode,
@@ -416,10 +604,23 @@ export class DrawEngine {
   extendStroke(at: Vec, pressure: number, now: number): void {
     const live = this.live
     if (!live) return
-    const last = live.points[live.points.length - 1]
-    if (last && Math.hypot(at.x - last.x, at.y - last.y) < MIN_POINT_DISTANCE) return
+    // 채우기는 탭이다. 끌어도 영역이 늘어나지 않는다.
+    if (live.mode === 'fill') return
 
-    live.points.push(quantizePoint(at.x, at.y, now - live.startedAt, pressure))
+    this.rawLast = { x: at.x, y: at.y }
+
+    // 손떨림 보정: 원본으로 바로 가지 않고 직전 출력에서 일부만 따라간다.
+    const prev = this.smoothed ?? at
+    const smooth = {
+      x: prev.x + (at.x - prev.x) * STABILIZE_ALPHA,
+      y: prev.y + (at.y - prev.y) * STABILIZE_ALPHA,
+    }
+    this.smoothed = smooth
+
+    const last = live.points[live.points.length - 1]
+    if (last && Math.hypot(smooth.x - last.x, smooth.y - last.y) < MIN_POINT_DISTANCE) return
+
+    live.points.push(quantizePoint(smooth.x, smooth.y, now - live.startedAt, pressure))
     this.commitSettledSpans()
     this.present()
   }
@@ -448,7 +649,12 @@ export class DrawEngine {
     ctx.save()
     this.outlinePath(ctx)
     ctx.clip()
-    if (live.mode === 'erase') {
+    if (live.mode === 'fill') {
+      // 탭 즉시 확정된다. 미리보기가 따로 없다.
+      this.paintFill(ctx, live)
+    } else if (live.mode === 'marker') {
+      // 형광펜은 끝날 때 한 번에 올린다. 그래야 이음매가 진해지지 않는다.
+    } else if (live.mode === 'erase') {
       if (n === 1) this.paintDot(ctx, live)
       else this.paintSpan(ctx, live, n - 1)
     } else if (n >= 3) {
@@ -460,27 +666,21 @@ export class DrawEngine {
   /** 아직 확정되지 않은 마지막 span. 화면에만 그리고 committed는 건드리지 않는다. */
   private paintLiveTail(): void {
     const live = this.live
-    if (!live || live.mode === 'erase') return
+    if (!live || live.mode === 'erase' || live.mode === 'fill') return
     const ctx = this.vctx
     const n = live.points.length
 
     ctx.save()
     this.outlinePath(ctx)
     ctx.clip()
-    if (n === 1) this.paintDot(ctx, live)
-    else this.paintSpan(ctx, live, n - 1)
-    ctx.restore()
-  }
-
-  /** 획이 끝날 때 아직 committed에 없는 마지막 조각을 올린다. */
-  private commitFinalSpan(stroke: Stroke): void {
-    const { ctx } = this.committed
-    const n = stroke.points.length
-    ctx.save()
-    this.outlinePath(ctx)
-    ctx.clip()
-    if (n === 1) this.paintDot(ctx, stroke)
-    else this.paintSpan(ctx, stroke, n - 1)
+    if (live.mode === 'marker') {
+      // 아직 committed에 없으므로 진행 중인 전체를 화면에만 보여준다.
+      this.paintMarker(ctx, live)
+    } else if (n === 1) {
+      this.paintDot(ctx, live)
+    } else {
+      this.paintSpan(ctx, live, n - 1)
+    }
     ctx.restore()
   }
 
@@ -499,10 +699,20 @@ export class DrawEngine {
         this.liveSnapped = true
       }
     }
-    // 스냅되면 기하가 바뀌므로 이 획의 픽셀을 처음부터 다시 만든다.
-    // 아니면 아직 안 올라간 마지막 조각만 올리면 된다.
-    if (this.liveSnapped) this.redrawCommitted()
-    else this.commitFinalSpan(live)
+    // 손을 뗀 자리에 선이 정확히 닿게 한다. 보정값은 원본보다 뒤처져 있다.
+    const raw = this.rawLast
+    if (raw && live.mode !== 'fill' && live.points.length > 1 && !this.liveSnapped) {
+      const tip = live.points[live.points.length - 1]!
+      if (Math.hypot(raw.x - tip.x, raw.y - tip.y) >= MIN_POINT_DISTANCE) {
+        live.points.push(quantizePoint(raw.x, raw.y, tip.t, tip.p))
+      }
+    }
+    this.smoothed = null
+    this.rawLast = null
+
+    // 끝 테이퍼는 획이 끝나야 적용된다. 진행 중 그려둔 span들의 굵기가 바뀌므로
+    // 이 시점에 committed를 통째로 다시 만든다. 손을 뗄 때 한 번만 치르는 비용이다.
+    this.redrawCommitted()
     this.liveSnapped = false
     this.present()
     return live
@@ -549,7 +759,8 @@ export class DrawEngine {
     type Frame = { stroke: Stroke; index: number; at: number }
     const frames: Frame[] = []
     for (const stroke of this.strokes) {
-      if (stroke.points.length <= 1) {
+      // 형광펜과 채우기는 통째로 칠해지므로 프레임 하나로 둔다.
+      if (stroke.points.length <= 1 || stroke.mode === 'marker' || stroke.mode === 'fill') {
         frames.push({ stroke, index: 0, at: stroke.startedAt })
         continue
       }
@@ -584,7 +795,7 @@ export class DrawEngine {
       cctx.clip()
       while (cursor < frames.length && frames[cursor]!.at <= virtual) {
         const frame = frames[cursor]!
-        if (frame.index === 0) this.paintDot(cctx, frame.stroke)
+        if (frame.index === 0) this.paintAtomic(cctx, frame.stroke)
         else this.paintSpan(cctx, frame.stroke, frame.index)
         cursor++
       }

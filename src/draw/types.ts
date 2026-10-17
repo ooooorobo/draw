@@ -22,7 +22,19 @@ export type Point = Vec & {
   p: number
 }
 
-export type StrokeMode = 'draw' | 'erase'
+/**
+ * draw   — 기본 펜. 필압(펜) 또는 속도(손가락)로 굵기가 변한다.
+ * erase  — destination-out. 굵기 일정.
+ * marker — 형광펜. 굵고 반투명하며 multiply로 겹친다. 획 전체를 한 번에 칠한다.
+ * fill   — 탭한 지점이 속한 닫힌 영역을 채운다. 점 하나만 쓴다.
+ */
+/**
+ * draw   — 기본 펜. 필압(펜) 또는 속도(손가락)로 굵기가 변한다.
+ * erase  — destination-out. 굵기 일정.
+ * marker — 형광펜. 굵고 반투명하며 multiply로 겹친다. 획 전체를 한 번에 칠한다.
+ * fill   — 탭한 지점이 속한 닫힌 영역을 채운다. 점 하나만 쓴다.
+ */
+export type StrokeMode = 'draw' | 'erase' | 'marker' | 'fill'
 
 export type Stroke = {
   id: string
