@@ -112,3 +112,139 @@ button[aria-pressed='true'] {
   background: #f4f4f4;
   padding: 8px;
 }
+
+/*
+ * MVP v3 와이어프레임 화면용 배치 규칙.
+ * 디자인이 아니라 와이어프레임의 375×812 프레임과 요소 순서만 재현한다.
+ */
+
+.phone {
+  width: 100%;
+  max-width: 375px;
+  min-height: 600px;
+  margin: 0 auto;
+  border: 1px solid #ccc;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.screen-title {
+  font-size: 20px;
+  margin: 0;
+}
+
+.screen-sub {
+  margin: 0;
+  color: #555;
+}
+
+/* 본문이 남는 높이를 받는다. 그리기 화면의 캔버스가 눌리지 않게 min-height:0. */
+.screen-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.screen-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  color: #777;
+}
+
+.label {
+  margin: 0;
+  font-size: 12px;
+  color: #555;
+}
+
+.hero {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* 배경·캐릭터 자리. 내용은 API 연동 이후에 들어온다. */
+.bg-box {
+  aspect-ratio: 3 / 4;
+  border: 1px dashed #bbb;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #888;
+}
+
+.bg-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.bg-choice {
+  padding: 16px 0;
+}
+
+/* 정방형 4열(와이어프레임 N05). */
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.slot {
+  aspect-ratio: 1;
+  border: 1px solid #bbb;
+  background: #fff;
+  padding: 0;
+}
+
+.char-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field input {
+  padding: 8px;
+  border: 1px solid #bbb;
+  font: inherit;
+}
+
+/* 개발용 화면 이동. 서비스 UI가 아니다. */
+.screen-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  border-top: 1px dashed #ccc;
+  padding-top: 8px;
+}
+
+.screen-nav button {
+  font-size: 11px;
+}

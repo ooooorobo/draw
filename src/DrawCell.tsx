@@ -37,18 +37,35 @@ type Props = {
   cellSize: CellSize
   /** 이 획수를 못 채우면 제출이 저장되지 않는다. */
   minStrokes: number
+  /**
+   * 제한 시간 덮어쓰기. null이면 타이머를 끈다(MVP 얼굴 그리기 화면 = 제한 시간 없음).
+   * 생략하면 칸 크기별 기본값(FR-09).
+   */
+  timeLimitMs?: number | null
+  /** 제출 버튼 라벨. 화면마다 다음 단계 이름이 다르다. */
+  submitLabel?: string
   onSubmit: (result: SubmitResult) => void
 }
 
-export function DrawCell({ template, cellSize, minStrokes, onSubmit }: Props) {
+export function DrawCell({
+  template,
+  cellSize,
+  minStrokes,
+  timeLimitMs,
+  submitLabel = '완료',
+  onSubmit,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const engineRef = useRef<DrawEngine | null>(null)
   const submittedRef = useRef(false)
 
+  /** null = 무제한. undefined면 칸 크기별 기본값. */
+  const limitMs = timeLimitMs === undefined ? TIME_LIMIT_MS[cellSize] : timeLimitMs
+
   const [tool, setTool] = useState<Tool>({ mode: 'draw', color: COLORS[0], width: PEN_WIDTHS[0] })
   const [strokeCount, setStrokeCount] = useState(0)
-  const [remainingMs, setRemainingMs] = useState(TIME_LIMIT_MS[cellSize])
+  const [remainingMs, setRemainingMs] = useState(limitMs ?? 0)
 
   const submit = useCallback(
     (reason: SubmitResult['reason']) => {
@@ -114,9 +131,10 @@ export function DrawCell({ template, cellSize, minStrokes, onSubmit }: Props) {
     engineRef.current?.setTool(tool)
   }, [tool])
 
-  // 제한 시간. 0이 되면 자동 제출(FR-10).
+  // 제한 시간. 0이 되면 자동 제출(FR-10). 무제한이면 타이머를 걸지 않는다.
   useEffect(() => {
-    const limit = TIME_LIMIT_MS[cellSize]
+    if (limitMs === null) return
+    const limit = limitMs
     const startedAt = performance.now()
     let handle = 0
 
@@ -132,7 +150,7 @@ export function DrawCell({ template, cellSize, minStrokes, onSubmit }: Props) {
     }
     handle = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(handle)
-  }, [cellSize, submit])
+  }, [limitMs, submit])
 
   const enough = strokeCount >= minStrokes
 
@@ -142,15 +160,14 @@ export function DrawCell({ template, cellSize, minStrokes, onSubmit }: Props) {
         <span>
           {template.label} / {cellSize}
         </span>
-        <span>{(remainingMs / 1000).toFixed(1)}s</span>
+        {limitMs !== null && <span>{(remainingMs / 1000).toFixed(1)}s</span>}
       </div>
 
-      <div className="timer-track">
-        <div
-          className="timer-fill"
-          style={{ width: `${(remainingMs / TIME_LIMIT_MS[cellSize]) * 100}%` }}
-        />
-      </div>
+      {limitMs !== null && (
+        <div className="timer-track">
+          <div className="timer-fill" style={{ width: `${(remainingMs / limitMs) * 100}%` }} />
+        </div>
+      )}
 
       <div className="canvas-frame" ref={frameRef}>
         <canvas ref={canvasRef} className="canvas" />
@@ -218,7 +235,7 @@ export function DrawCell({ template, cellSize, minStrokes, onSubmit }: Props) {
           획 {strokeCount} / 최소 {minStrokes}
         </span>
         <button type="button" disabled={!enough} onClick={() => submit('manual')}>
-          완료
+          {submitLabel}
         </button>
       </div>
     </div>
