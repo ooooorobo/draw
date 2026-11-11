@@ -530,8 +530,19 @@ export class DrawEngine {
     const ctx = this.vctx
     ctx.save()
     ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, this.visible.width, this.visible.height)
+    ctx.restore()
+
+    // 칸 안쪽만 흰 바탕을 깐다. 바깥은 투명이라 캔버스 뒤에 깐 포즈(N06)가 비쳐 보인다.
+    // 내보내기(renderExport)는 원래부터 바탕 없이 그려서 영향이 없다.
+    ctx.save()
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, this.visible.width, this.visible.height)
+    this.outlinePath(ctx)
+    ctx.fill()
+    ctx.restore()
+
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.drawImage(this.hint.canvas, 0, 0)
     ctx.drawImage(this.committed.canvas, 0, 0)
     ctx.restore()

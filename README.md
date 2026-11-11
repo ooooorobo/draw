@@ -31,12 +31,34 @@ npm run dev -- --host # 실기기 테스트용
 src/draw/types.ts     획 데이터 모델 (정규화 좌표 + 시간 + 필압)
 src/draw/engine.ts    렌더링 (hint / committed / visible 3레이어)
 src/draw/pointer.ts   입력 (모바일 / 펜슬 / 인앱 브라우저 대응)
-src/draw/template.ts  PoC 칸 1개. 실제 템플릿은 서버가 내려줄 자리
+src/draw/template.ts  얼굴 칸 템플릿. 서버 템플릿 API가 생기면 대체할 자리
 src/DrawCell.tsx      그리기 화면
-src/App.tsx           검증용 하네스
+
+src/lib/placement.ts  배치 값과 제스처 수학 (서버 좌표 계약과 같은 단위)
+src/lib/compose.ts    배경 + 캐릭터를 PNG 한 장으로 합성 / 저장 / 공유
+src/lib/relay-draw/   백엔드 SDK (api-client.ts는 백엔드 제공물)
+src/lib/route.ts      /rooms/{id}#host={token} 링크 해석
+src/lib/session.ts    브라우저 로컬 상태 (등록 1회, 방장 토큰, 멱등 키)
+
+src/screens/          MVP v3 와이어프레임 화면 (N01~N11, E01~E04)
+src/screens/placement.tsx  배치 에디터 (N07) + 등록 제출
+src/App.tsx           URL로 진입 화면 결정 + 개발용 화면 이동
 ```
 
-`src/draw/` 아래는 React에 의존하지 않는다.
+`src/draw/`와 `src/lib/placement.ts`, `src/lib/compose.ts`는 React에 의존하지 않는다.
+
+## 백엔드 연동
+
+`.env.example`을 `.env.local`로 복사하면 API origin이 잡힌다. `npm run check:api`로
+서버가 살아있는지와 응답이 SDK 타입과 맞는지 확인한다.
+
+좌표 계약(제출 API): x·y는 배경 사각형 기준 **중심 비율**, scale은 **배경 너비 대비 비율**,
+rotation은 도 단위, zIndex는 서버가 정한다. 화면(`PlacedSprite`)과 합성(`composeScene`)이
+이 해석을 똑같이 구현해야 "배치한 그림"과 "저장한 그림"이 같다.
+
+결과 이미지는 서버가 만들지 않는다(`GET /result`는 scene과 같은 JSON). 클라이언트가
+배경과 캐릭터를 캔버스로 합쳐 내려받고, 더 이상 바뀌지 않는 방이면 `POST /result-assets`로
+방에도 남긴다.
 
 ## 설계 판단
 
