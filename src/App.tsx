@@ -20,7 +20,7 @@ import { Cta, Foot, Page, Toast } from './screens/ui.tsx'
  * DRAWING PARTY — Figma 최종 디자인(MVP v4) 화면 라우터.
  *
  * 첫 화면은 주소로 정한다(lib/relay-draw/entry.ts).
- *   방 링크 없음 → N01, 방 링크 → N04(가로 배경이면 N04L 레이아웃), 이미 참여 → N09R,
+ *   방 링크 없음 → N01, 방 링크 → N04(가로 배경이면 N04L 레이아웃, 이미 참여했어도 N04),
  *   종료된 방 → N11, 잘못된 링크 → E03.
  * 이후 화면 전이는 로컬 상태로만 일어난다.
  */

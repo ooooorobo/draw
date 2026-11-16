@@ -39,7 +39,7 @@ export function useAsync<T>(load: (signal: AbortSignal) => Promise<T>, deps: rea
   return { ...state, reload }
 }
 
-/** 앱 진입 화면 결정(URL → N01/N04/N04L/N09R/N11/E03). */
+/** 앱 진입 화면 결정(URL → N01/N04/N04L/N11/E03). */
 export function useEntry() {
   return useAsync<Entry>((signal) => resolveEntry(undefined, signal), [])
 }

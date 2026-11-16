@@ -5,8 +5,9 @@
  *   방 ID 형식 오류·없는 방  → E03
  *   만료 방(410)            → E03 (디자인에 만료 화면 없음)
  *   CLOSED                  → N11
- *   OPEN + 이 브라우저 제출함 → N09R
  *   OPEN                    → N04 (배경이 가로면 N04L)
+ *
+ * 이미 참여한 브라우저도 N04에서 시작한다(추가 캐릭터 참여 허용).
  *
  * 공유 링크 형식(roomUrl)은 서버가 만든다. 실제 형식을 확인하지 못해서
  * 쿼리(?room=), 경로(/r/:id, /rooms/:id), 해시 어디에 있든 UUID를 찾는다.
@@ -47,7 +48,6 @@ export type Entry =
   | { screen: 'N01' }
   | { screen: 'E03' }
   | { screen: 'N11'; room: RoomV2 }
-  | { screen: 'N09R'; room: RoomV2; participation: Participation }
   | { screen: 'N04' | 'N04L'; room: RoomV2; participation: Participation | null }
   /** 네트워크·5xx. 화면은 그대로 두고 재시도 버튼을 보여준다. */
   | { screen: null; retryMessage: string }
@@ -69,10 +69,8 @@ export async function resolveEntry(href?: string, signal?: AbortSignal): Promise
 
   if (room.status !== 'OPEN') return { screen: 'N11', room }
 
+  // 이전 참여 기록이 있으면 넘긴다(별명 미리 채우기).
   const participation = participationStore.get(room.roomId)
-  if (participation?.submittedAt) return { screen: 'N09R', room, participation }
-
-  // 미제출 DRAFT가 남아 있으면 participation으로 넘긴다. 이어 그릴지는 화면이 정한다.
   const screen = isLandscape(room.background) ? 'N04L' : 'N04'
   return { screen, room, participation }
 }
