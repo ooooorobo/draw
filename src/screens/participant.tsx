@@ -17,7 +17,6 @@ import {
   confirmCharacter,
   hasAdminSession,
   loadCharacters,
-  myCharacterId,
   replayBlob,
   resetSubmission,
   submitPlacement,
@@ -545,7 +544,7 @@ function HScroll({ value, onChange }: { value: number; onChange: (value: number)
 /** N09 배치 완료 / N09R 완료자 재접속. 화면 구성이 같다. */
 export function JoinDone(props: ScreenProps) {
   const { nav, flow, patch, toast } = props
-  const { roomId, scene, remaining } = useRoomScene(props)
+  const { scene, remaining } = useRoomScene(props)
   const image = useSaveImage(toast)
   const background = sceneBackground(flow, scene)
   if (!flow.room || !background) return <Missing />
@@ -558,7 +557,6 @@ export function JoinDone(props: ScreenProps) {
           background={background}
           characters={scene?.characters}
           maxHeight={468}
-          highlightId={roomId ? myCharacterId(roomId) : null}
         />
       </Body>
       <Foot>
