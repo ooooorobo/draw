@@ -21,7 +21,7 @@ import type { CellTemplate, Stroke, StrokeMode, Vec } from './types.ts'
 const MAX_DPR = 2
 
 /** 경계 띠를 그릴 여백. 칸 한 변 대비 비율. */
-const MARGIN_RATIO = 0.08
+export const MARGIN_RATIO = 0.08
 
 /** 연결점 스냅 반경. 칸 한 변 대비 비율. */
 const SNAP_RATIO = 0.055
@@ -128,11 +128,23 @@ export class DrawEngine {
 
   private replayHandle: number | null = null
 
-  constructor(canvas: HTMLCanvasElement, template: CellTemplate, tool: Tool) {
+  /**
+   * 화면 바탕색. null이면 투명이라 캔버스 아래 요소(얼굴 그리기의 캐릭터 포즈)가 비친다.
+   * 내보내기(renderExport)는 원래 바탕을 칠하지 않으므로 이 값과 무관하다.
+   */
+  private readonly background: string | null
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    template: CellTemplate,
+    tool: Tool,
+    options: { background?: string | null } = {},
+  ) {
     this.visible = canvas
     this.vctx = ctxOf(canvas)
     this.template = template
     this.tool = tool
+    this.background = options.background === undefined ? '#ffffff' : options.background
   }
 
   setTool(tool: Tool): void {
@@ -530,8 +542,12 @@ export class DrawEngine {
     const ctx = this.vctx
     ctx.save()
     ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, this.visible.width, this.visible.height)
+    if (this.background === null) {
+      ctx.clearRect(0, 0, this.visible.width, this.visible.height)
+    } else {
+      ctx.fillStyle = this.background
+      ctx.fillRect(0, 0, this.visible.width, this.visible.height)
+    }
     ctx.drawImage(this.hint.canvas, 0, 0)
     ctx.drawImage(this.committed.canvas, 0, 0)
     ctx.restore()
@@ -740,6 +756,18 @@ export class DrawEngine {
     this.present()
   }
 
+  /**
+   * 이전에 그린 획을 되살린다. 화면을 오갔다 돌아와 이어 그릴 때 쓴다(N06C → N06 "다시 그리기").
+   * 획은 정규화 좌표라 캔버스 크기가 달라져도 그대로 쓸 수 있다.
+   */
+  loadStrokes(strokes: Stroke[]): void {
+    this.cancelReplay()
+    this.live = null
+    this.strokes = strokes.map((s) => ({ ...s, points: [...s.points] }))
+    this.redrawCommitted()
+    this.present()
+  }
+
   /** PoC 검증용. 제품에는 다시 그리기가 없다(FR-10). */
   reset(): void {
     this.cancelReplay()
@@ -854,6 +882,11 @@ export class DrawEngine {
       this.size = saved
     }
     return out
+  }
+
+  /** 제출물 캔버스 자체. 호출자가 일부 영역만 잘라 쓸 때(얼굴 영역 크롭) 쓴다. */
+  exportCanvas(size = EXPORT_SIZE): HTMLCanvasElement {
+    return this.renderExport(size)
   }
 
   /** 미리보기/다운로드용. 업로드에는 toBlob을 쓴다. */

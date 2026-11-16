@@ -1,9 +1,40 @@
 /*
- * 디자인 없음. 디자이너 작업물로 전부 교체된다.
- * 여기 있는 규칙은 두 종류뿐이다.
- *   (a) 인앱 브라우저/터치에서 캔버스가 깨지지 않게 하는 기능성 규칙
- *   (b) 요소가 겹치지 않을 정도의 최소 배치
+ * DRAWING PARTY — Figma 최종 디자인(MVP v4, 375×812 기준).
+ *
+ * 디자인 값은 전부 아래 토큰에서 온다. 화면 CSS에 색을 직접 쓰지 않는다.
+ * 폰트: 디자인은 쿠키런(CookieRunOTF). 웹폰트가 없을 때는 Noto Sans KR로 떨어진다.
  */
+
+@font-face {
+  font-family: 'CookieRun';
+  font-weight: 400 700;
+  font-display: swap;
+  /* 쿠키런 무료 폰트(데브시스터즈). Bold 웹폰트가 없어서 700은 브라우저 합성 굵기를 쓴다. */
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/CookieRun-Regular.woff') format('woff');
+}
+
+:root {
+  --font: 'CookieRun', 'Noto Sans KR', system-ui, sans-serif;
+
+  --bg: #fef9dc;
+  --ink: #292929;
+  --ink-strong: #333333;
+  --label: #3d3d3d;
+  --placeholder: #b2b2b2;
+  --line: rgba(107, 107, 107, 0.5);
+  --tile-line: #bfbfbf;
+  --error: #fd361b;
+
+  --badge-bg: #f7dbb4;
+  --badge-fg: #cd7b08;
+  --selected: #ffe5a3;
+  --tool-active: #ffe094;
+  --track: #e5deb8;
+  --scroll-track: #ded9bd;
+  --canvas-dim: rgba(51, 51, 51, 0.3);
+
+  --page-x: 16px;
+}
 
 * {
   box-sizing: border-box;
@@ -17,53 +48,128 @@ body {
 }
 
 body {
-  font: 14px/1.5 system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
 }
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* ---------- 앱 프레임 ---------- */
 
 .app {
   /* 주소창 때문에 100vh가 실제 보이는 높이와 다르다. dvh는 접히는 UI를 반영한다. */
   min-height: 100dvh;
-  padding: 12px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  justify-content: center;
 }
 
-.panel,
-.cell {
+/* 디자인 프레임 폭(375)을 기준으로 하되 큰 폰에서는 조금 더 넓힌다. */
+.page {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  min-height: 100dvh;
+  /* 아래 여백은 하단 CTA(.foot)가 가진다. */
+  padding: 56px var(--page-x) 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  /*
+   * hidden이 아니라 clip이어야 한다. hidden은 스크롤 컨테이너를 만들어서
+   * 하단 CTA의 position: sticky가 문서 스크롤을 따라가지 못한다.
+   */
+  overflow-x: clip;
+}
+
+/* N01: 배경이 화면 전체를 덮는다. */
+.page--hero {
+  padding-top: 0;
+  justify-content: flex-end;
+}
+
+/* 페이지 높이를 화면에 묶는다. 안쪽 영역(N05 캐릭터 목록)만 스크롤한다. */
+.page--fixed {
+  height: 100dvh;
+}
+
+/* N07: 제목 없이 배치 뷰포트가 위에서 16px부터 시작한다. */
+.page--tight {
+  padding-top: 16px;
+}
+
+/* ---------- 머리말 ---------- */
+
+.head {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 10px;
+  text-align: center;
 }
 
-/*
- * 그리기 화면은 남는 높이를 전부 캔버스에 준다.
- * min-height:0이 없으면 flex 자식이 내용 높이 아래로 못 줄어들어 캔버스가 눌린다.
- */
-.cell {
+.head-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.head-title--bold {
+  font-weight: 700;
+}
+
+.head-title--xl {
+  font-size: 26px;
+  line-height: 1;
+  padding-bottom: 16px;
+}
+
+.head-sub {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* 제목 오른쪽 위 "방 관리" 배지. 제목 줄(18px × 1.5)에 세로 가운데를 맞춘다. */
+.badge {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  border: 0;
+  border-radius: 40px;
+  padding: 6px 10px;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* ---------- 본문 ---------- */
+
+/* 남는 높이를 받는 영역. min-height:0이 없으면 flex 자식이 내용 아래로 못 줄어든다. */
+.body {
   flex: 1;
   min-height: 0;
-}
-
-.cell-head,
-.cell-foot {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 20px;
 }
 
-.timer-track {
-  height: 4px;
-  background: #e0e0e0;
-}
-
-.timer-fill {
-  height: 100%;
-  background: #333;
-}
-
-.canvas-frame {
-  /* 엔진이 정사각으로 맞추므로 사용 가능한 영역만 제공한다. */
+/* 그림 미리보기 자리. 실제 크기는 FitBox가 계산한다. */
+.stage {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -71,180 +177,671 @@ body {
   align-items: center;
 }
 
+.text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.text--lead {
+  font-size: 18px;
+}
+
+.text--error {
+  color: var(--error);
+  text-align: left;
+}
+
+.bullets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bullets li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bullets li::before {
+  content: '';
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+/* ---------- 하단 CTA ---------- */
+
+/*
+ * 하단 스티키. 내용이 화면보다 길면(작은 폰, N05 캐릭터 목록) 스크롤해도 CTA가 바닥에 남는다.
+ * 내용이 짧으면 본문(flex: 1)이 남는 높이를 채워 원래 자리(하단 40px)에 놓인다.
+ * 배경색을 깔아 그 아래로 지나가는 내용을 가린다.
+ */
+.foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: 12px;
+  margin: 0 calc(var(--page-x) * -1);
+  padding: 24px var(--page-x) max(40px, env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+/* 공통 / 입체 CTA. 아래로 5px 떨어진 검은 그림자가 입체감을 만든다. */
+.cta {
+  flex: 1;
+  height: 48px;
+  border: 2px solid var(--ink-strong);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--ink-strong);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  filter: drop-shadow(0 5px 0 #000);
+  transition:
+    transform 80ms ease-out,
+    filter 80ms ease-out;
+}
+
+.cta:active:not(:disabled) {
+  transform: translateY(4px);
+  filter: drop-shadow(0 1px 0 #000);
+}
+
+.cta:disabled {
+  cursor: default;
+  color: var(--placeholder);
+  border-color: var(--placeholder);
+  filter: drop-shadow(0 5px 0 var(--placeholder));
+}
+
+/* ---------- 입력 ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field-label {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--label);
+}
+
+.field-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+}
+
+.field-input::placeholder {
+  color: var(--placeholder);
+}
+
+.field-input:focus {
+  border-color: var(--ink-strong);
+}
+
+.field-input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+/* ---------- 그림(배경 + 캐릭터) ---------- */
+
+.scene {
+  position: relative;
+  flex: none;
+  border: 2px solid var(--ink-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.scene-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+.sprite {
+  position: absolute;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.sprite-pose,
+.sprite-face {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.sprite-pose {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* N10: 선택한 캐릭터 강조. */
+.sprite-mark {
+  position: absolute;
+  border: 2px solid var(--ink-strong);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+/* ---------- N01 시작 ---------- */
+
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.hero-title {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+/* N01은 배경 그림 위에 CTA가 떠 있으므로 바탕을 깔지 않는다. */
+.page--hero .foot {
+  background: transparent;
+}
+
+/* ---------- N02 배경 선택 ---------- */
+
+.picker {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  /* 오른쪽 끝까지 흘러 나가게 한다(디자인에서 5번째 칸이 잘려 보인다). */
+  margin-right: calc(var(--page-x) * -1);
+  padding: 2px var(--page-x) 2px 0;
+  scrollbar-width: none;
+}
+
+.picker::-webkit-scrollbar {
+  display: none;
+}
+
+.thumb {
+  position: relative;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.thumb[aria-pressed='true'] {
+  border: 2px solid var(--ink-strong);
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.thumb .thumb-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- N05 캐릭터 선택 ---------- */
+
+.char-list {
+  /* 제목과 하단 CTA는 고정하고 목록만 스크롤한다. 페이지 높이는 .page--fixed가 화면에 묶는다. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-top: 32px;
+}
+
+.char-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.char-name {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.char-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+
+.pose {
+  aspect-ratio: 1;
+  padding: 3px;
+  border: 1px solid var(--tile-line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.pose[aria-pressed='true'] {
+  padding: 2px;
+  border: 2px solid var(--ink-strong);
+}
+
+.pose img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* ---------- N06 얼굴 그리기 ---------- */
+
+.draw-card {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  max-height: 370px;
+  border: 2px solid var(--ink-strong);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.draw-card > * {
+  position: absolute;
+}
+
+/* 얼굴 밖을 30% 어둡게. 그릴 곳이 얼굴 영역이라는 것만 남긴다. */
+.draw-dim {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .canvas {
   /*
    * 기능성 규칙. 이것들이 없으면 모바일에서 그리기가 성립하지 않는다.
-   * touch-action: 브라우저의 스크롤/핀치 줌 처리를 끈다(FR-09 제스처 충돌).
+   * touch-action: 브라우저의 스크롤/핀치 줌 처리를 끈다.
    * user-select / touch-callout: 길게 누를 때 뜨는 선택·저장 팝업을 막는다.
    */
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  border: 1px solid #ccc;
+}
+
+.pen-options {
+  align-self: center;
+  width: 300px;
+  max-width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 16px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.swatches {
+  display: flex;
+  gap: 16px;
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+}
+
+.swatch[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--ink-strong);
+}
+
+.width-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.width-dot {
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-strong);
+}
+
+/* 굵기 슬라이더. 트랙 2px, 지나온 쪽은 진하게. */
+.width-slider {
+  flex: 1;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  --fill: 30%;
+}
+
+.width-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: linear-gradient(to right, var(--ink-strong) var(--fill), #ccc var(--fill));
+}
+
+.width-slider::-moz-range-track {
+  height: 2px;
+  background: linear-gradient(to right, var(--ink-strong) var(--fill), #ccc var(--fill));
+}
+
+.width-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border: 2px solid var(--ink-strong);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.width-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--ink-strong);
+  border-radius: 50%;
+  background: #fff;
 }
 
 .tools {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-button[aria-pressed='true'] {
-  outline: 2px solid #333;
-}
-
-.swatch {
-  width: 28px;
-  height: 28px;
-  border: 1px solid #999;
-}
-
-.countdown {
-  font-size: 48px;
-  text-align: center;
-}
-
-.dump {
-  max-height: 200px;
-  overflow: auto;
-  background: #f4f4f4;
-  padding: 8px;
-}
-
-/*
- * MVP v3 와이어프레임 화면용 배치 규칙.
- * 디자인이 아니라 와이어프레임의 375×812 프레임과 요소 순서만 재현한다.
- */
-
-.phone {
-  width: 100%;
-  max-width: 375px;
-  min-height: 600px;
-  margin: 0 auto;
-  border: 1px solid #ccc;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-}
-
-.screen {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.screen-title {
-  font-size: 20px;
-  margin: 0;
-}
-
-.screen-sub {
-  margin: 0;
-  color: #555;
-}
-
-/* 본문이 남는 높이를 받는다. 그리기 화면의 캔버스가 눌리지 않게 min-height:0. */
-.screen-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.screen-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.note {
-  margin: 0;
-  font-size: 12px;
-  color: #777;
-}
-
-.label {
-  margin: 0;
-  font-size: 12px;
-  color: #555;
-}
-
-.hero {
-  flex: 1;
-  display: flex;
   justify-content: center;
-  align-items: center;
-  font-size: 24px;
-  font-weight: 700;
+  gap: 16px;
 }
 
-/* 배경·캐릭터 자리. 내용은 API 연동 이후에 들어온다. */
-.bg-box {
-  aspect-ratio: 3 / 4;
-  border: 1px dashed #bbb;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  color: #888;
-}
-
-.bg-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
-}
-
-.bg-choice {
-  padding: 16px 0;
-}
-
-/* 정방형 4열(와이어프레임 N05). */
-.slot-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-
-.slot {
-  aspect-ratio: 1;
-  border: 1px solid #bbb;
-  background: #fff;
+.tool {
+  width: 48px;
+  height: 48px;
   padding: 0;
-}
-
-.char-group {
+  border: 1.5px solid var(--ink-strong);
+  border-radius: 24px;
+  background: #fff;
+  filter: drop-shadow(0 3px 0 #000);
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.field input {
-  padding: 8px;
-  border: 1px solid #bbb;
-  font: inherit;
-}
-
-/* 개발용 화면 이동. 서비스 UI가 아니다. */
-.screen-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
   justify-content: center;
-  border-top: 1px dashed #ccc;
-  padding-top: 8px;
+  align-items: center;
 }
 
-.screen-nav button {
-  font-size: 11px;
+.tool[aria-pressed='true'] {
+  background: var(--tool-active);
+}
+
+.tool:active {
+  transform: translateY(2px);
+  filter: drop-shadow(0 1px 0 #000);
+}
+
+.tool img {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---------- N06C 전체모습 ---------- */
+
+.figure {
+  position: relative;
+  flex: none;
+  align-self: center;
+}
+
+/* ---------- N07 배치 ---------- */
+
+.place-view {
+  position: relative;
+  box-sizing: content-box;
+  border: 2px solid var(--ink-strong);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.place-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+}
+
+.place-target {
+  position: absolute;
+  touch-action: none;
+  cursor: grab;
+}
+
+.place-target:active {
+  cursor: grabbing;
+}
+
+/* 선택 캐릭터 경계. 점선 박스 + 네 모서리 크기 조절 핸들. */
+.place-frame {
+  position: absolute;
+  inset: -2px;
+  border: 1px dashed var(--ink-strong);
+  pointer-events: none;
+}
+
+.place-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  padding: 1px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 8px;
+  background: #fff;
+  touch-action: none;
+}
+
+.place-handle img {
+  display: block;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+/* 가로 배경 외부 스크롤 / 트랙 300 · 손잡이 80 */
+.hscroll {
+  position: relative;
+  align-self: center;
+  width: 300px;
+  max-width: 100%;
+  height: 32px;
+  touch-action: none;
+}
+
+.hscroll-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 8px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 4px;
+  background: var(--track);
+}
+
+.hscroll-knob {
+  position: absolute;
+  top: 0;
+  width: 80px;
+  height: 32px;
+  padding: 0;
+  border: 1.5px solid var(--ink-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 0 #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  touch-action: none;
+  cursor: grab;
+}
+
+.hscroll-knob img {
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+}
+
+/* ---------- N10 방장 관리 ---------- */
+
+.roster {
+  display: flex;
+  gap: 12px;
+  padding: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.roster::-webkit-scrollbar {
+  display: none;
+}
+
+.roster-item {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  padding: 5px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.roster-item[aria-pressed='true'] {
+  padding: 4px;
+  border-width: 2px;
+  background: var(--selected);
+}
+
+.roster-item .sprite {
+  position: relative;
+}
+
+.roster-bar {
+  position: relative;
+  height: 3px;
+  margin-top: -12px;
+  border-radius: 1.5px;
+  background: var(--scroll-track);
+}
+
+.roster-bar-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 1.5px;
+  background: var(--ink-strong);
+}
+
+/* ---------- E03 표지판 ---------- */
+
+.sign {
+  position: relative;
+  width: 160px;
+  height: 140px;
+  align-self: center;
+}
+
+.sign img {
+  position: absolute;
+  display: block;
+}
+
+/* ---------- 상태 ---------- */
+
+.loading {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 14px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(110px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: 20px;
+  background: rgba(41, 41, 41, 0.9);
+  color: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
 }

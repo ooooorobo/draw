@@ -1,80 +1,69 @@
+import type { BackgroundChoice } from '../lib/relay-draw/api-client.ts'
+import type { Artwork, RoomCreatedV2, RoomV2 } from '../lib/relay-draw/api-v2.ts'
+import type { FlowScreen } from '../lib/relay-draw/errors.ts'
+import type { Stroke } from '../draw/types.ts'
+
 /**
- * MVP v3 와이어프레임의 화면 식별자와 화면 간 공유 상태.
- *
- * 와이어프레임(375×812)의 화면 번호를 그대로 식별자로 쓴다.
- * 서버/API는 범위 밖이라 모든 상태는 세션 메모리에만 있다.
+ * 화면 식별자는 Figma 최종 디자인(MVP v4)의 화면 번호 그대로다.
+ * API 레이어(errors.ts)의 FlowScreen과 같은 집합이라 오류 처리 결과를 바로 화면 전이에 쓴다.
+ * N04L(가로 배경 참여)은 N04가 배경 비율로 알아서 바꿔 그린다.
  */
+export type ScreenId = FlowScreen
 
-export type ScreenId =
-  // 방장 01 — 방 만들기
-  | 'N01'
-  | 'N02'
-  | 'N02P'
-  | 'N03'
-  // 참여자 01 — 최초 참여
-  | 'N04'
-  | 'N05'
-  | 'N06'
-  | 'N07'
-  | 'N09'
-  // 후속 검토 — 관리와 재방문
-  | 'N10'
-  | 'N10C'
-  | 'N09R'
-  | 'N11'
-  // 예외 상태
-  | 'E01'
-  | 'E02'
-  | 'E03'
-  | 'E04'
-
-/** 개발용 화면 이동 목록. 예외 화면은 API 없이는 도달 경로가 없어서 여기서만 열린다. */
-export const SCREEN_LIST: { id: ScreenId; label: string }[] = [
-  { id: 'N01', label: '시작' },
-  { id: 'N02', label: '방 만들기' },
-  { id: 'N02P', label: '업로드 배경 확인' },
-  { id: 'N03', label: '방 생성 완료' },
-  { id: 'N04', label: '참여 시작' },
-  { id: 'N05', label: '캐릭터 선택' },
-  { id: 'N06', label: '얼굴 그리기' },
-  { id: 'N07', label: '배치' },
-  { id: 'N09', label: '등록 완료' },
-  { id: 'N10', label: '방장 관리' },
-  { id: 'N10C', label: '종료 확인' },
-  { id: 'N09R', label: '참여 완료자 재접속' },
-  { id: 'N11', label: '종료 결과' },
-  { id: 'E01', label: '배경 업로드 실패' },
-  { id: 'E02', label: '등록 실패' },
-  { id: 'E03', label: '잘못된 참여 링크' },
-  { id: 'E04', label: '관리 링크 오류' },
-]
-
-/** 기본 배경 4종 또는 업로드 사진. 규격·크롭은 와이어프레임에서 미정. */
-export type Background = { kind: 'preset'; id: number } | { kind: 'photo' }
-
-export function describeBackground(background: Background | null): string {
-  if (!background) return '배경 미선택'
-  return background.kind === 'preset' ? `배경 ${background.id}` : '업로드 사진'
+/** 방장이 고른 배경. 미리보기용 URL·크기와 서버에 넘길 선택값을 같이 든다. */
+export type PickedBackground = {
+  choice: BackgroundChoice
+  /** <img src>에 바로 쓸 URL(기본 배경은 API URL, 업로드는 object URL). */
+  previewUrl: string
+  width: number
+  height: number
 }
 
-/** 선택한 캐릭터 칸. 칸 내용(포즈 이미지)은 비워둔 상태다. */
-export type CharacterPick = { group: number; pose: number }
+/** 얼굴 그리기 결과. 제출 재시도(E02)는 같은 Blob이어야 해서 여기 보관한다. */
+export type DrawnFace = {
+  strokes: Stroke[]
+  blob: Blob
+  /** 그리는 과정(획 데이터) 파일. 제출 재시도에서도 같은 Blob을 보내야 한다. */
+  replay: Blob
+  /** blob의 object URL. N06C·N07 미리보기용. */
+  url: string
+}
+
+/** 배경 기준 캐릭터 위치(서버 좌표계와 같다). */
+export type PlacementDraft = { x: number; y: number; scale: number }
 
 export type FlowState = {
-  roomTitle: string
-  background: Background | null
+  // 방장
+  background: PickedBackground | null
+  /** N02P에서 확인 중인 사진. 사용하기를 누르면 업로드한다. */
+  pendingPhoto: { file: File; url: string; width: number; height: number } | null
+  title: string
+  created: RoomCreatedV2 | null
+
+  // 참여자 / 방장 관리
+  room: RoomV2 | null
   nickname: string
-  character: CharacterPick | null
-  /** 얼굴 그리기 결과. 배치 화면은 미구현이라 아직 소비하지 않는다. */
-  drawn: boolean
+  pick: { presetId: string; poseId: string; characterName: string } | null
+  artwork: Artwork | null
+  face: DrawnFace | null
+  placement: PlacementDraft | null
+
+  /** N10에서 고른 삭제 대상. */
+  deleteTarget: { id: string; artwork: Artwork; faceUrl: string | null } | null
 }
 
 export const INITIAL_FLOW: FlowState = {
-  roomTitle: '',
   background: null,
+  pendingPhoto: null,
+  title: '',
+  created: null,
+  room: null,
   nickname: '',
-  character: null,
-  drawn: false,
+  pick: null,
+  artwork: null,
+  face: null,
+  placement: null,
+  deleteTarget: null,
 }
 
 export type Nav = (to: ScreenId) => void
@@ -83,4 +72,6 @@ export type ScreenProps = {
   nav: Nav
   flow: FlowState
   patch: (next: Partial<FlowState>) => void
+  /** 화면 아래쪽 짧은 안내. */
+  toast: (message: string) => void
 }
