@@ -6,7 +6,7 @@ import type { CellTemplate, Stroke, StrokeMode, Vec } from './types.ts'
  *
  * 레이어 3장:
  *   hint      — 경계 띠(옆 칸 가장자리). 지우개가 닿지 않아야 하므로 분리한다.
- *   committed — 제출된 내 획들. 지우개는 여기에만 destination-out으로 적용된다.
+ *   committed — 제출된 내 획들. 지우개는 획 목록에서 획을 빼고 이 레이어를 다시 만든다.
  *   visible   — 위 두 장 + 연결점/외곽선 오버레이를 합성해 보여주는 화면.
  *
  * OffscreenCanvas는 iOS 16.4+가 필요해서 쓰지 않는다.
@@ -19,6 +19,12 @@ import type { CellTemplate, Stroke, StrokeMode, Vec } from './types.ts'
  * 인앱 웹뷰는 탭 메모리가 더 빡빡해서 2로 묶는다.
  */
 const MAX_DPR = 2
+
+/**
+ * 확대 중 캔버스 한 변의 device px 상한. 확대하면 해상도를 같이 올려야 선이 뭉개지지 않지만,
+ * 레이어가 3장이라 무한정 올리면 인앱 웹뷰에서 메모리가 터진다(1600² × 4B × 3 ≈ 31MB).
+ */
+const MAX_DEVICE_SIDE = 1600
 
 /** 경계 띠를 그릴 여백. 칸 한 변 대비 비율. */
 const MARGIN_RATIO = 0.08
@@ -65,6 +71,12 @@ const TAPER_POINTS = 4
 /** 테이퍼 구간 끝에서의 굵기 배율. */
 const TAPER_MIN = 0.3
 
+/**
+ * 지우개 반경. 칸 한 변 대비 비율이고 화면 확대율로 나눠 쓴다.
+ * 확대하면 같은 손가락 크기로 더 작은 영역을 지울 수 있어야 정밀하게 지울 수 있다.
+ */
+const ERASER_RADIUS = 0.028
+
 /** 형광펜 불투명도. multiply와 함께 쓴다. */
 const MARKER_ALPHA = 0.45
 
@@ -83,6 +95,14 @@ export type Tool = {
   color: string
   width: number
 }
+
+/**
+ * 되돌리기 단위. 지우개가 획을 통째로 지우므로 "획 추가"만으로는 이력을 표현할 수 없다.
+ * erase는 지운 획과 지울 당시의 인덱스를 들고 있어서 되돌리면 원래 순서(= 겹침 순서)로 복원된다.
+ */
+type HistoryEntry =
+  | { kind: 'add'; stroke: Stroke }
+  | { kind: 'erase'; removed: { stroke: Stroke; index: number }[] }
 
 type Layer = {
   canvas: HTMLCanvasElement
@@ -116,7 +136,16 @@ export class DrawEngine {
   private dpr = 1
 
   private strokes: Stroke[] = []
+  private history: HistoryEntry[] = []
+  /** 획 id 발급용. 지우개로 획이 빠지면 strokes.length가 줄어 id가 겹칠 수 있다. */
+  private seq = 0
   private live: Stroke | null = null
+  /** 지우개로 끌고 있는 중. 이번 제스처에서 지운 획을 모은다(되돌리기 한 번 = 제스처 한 번). */
+  private erasing: { removed: { stroke: Stroke; index: number }[]; last: Vec } | null = null
+  /** 화면 확대율. 해상도와 지우개 반경에 반영한다. */
+  private zoom = 1
+  /** 채우기 획이 칠한 영역(device px 마스크). 지우개 적중 판정용 캐시. */
+  private fillRegions = new Map<Stroke, Uint8Array>()
   /** 손떨림 보정의 직전 출력값. 원본 입력이 아니라 눌러준 값을 누적한다. */
   private smoothed: Vec | null = null
   /** 직전 원본 입력. 손을 뗀 자리에 선이 정확히 닿게 하려고 따로 들고 있는다. */
@@ -147,6 +176,22 @@ export class DrawEngine {
     return this.strokes.length
   }
 
+  /** 되돌릴 것이 있는지. 지운 획도 되돌릴 수 있어서 획 수만으로는 판단할 수 없다. */
+  get canUndo(): boolean {
+    return this.history.length > 0 || this.live !== null
+  }
+
+  /**
+   * 화면 확대율. 캔버스 해상도를 그만큼 올려 다시 그린다.
+   * 다시 그리는 비용이 있어서 제스처 중이 아니라 끝난 뒤에 한 번 부른다.
+   */
+  setZoom(zoom: number): void {
+    const next = Math.max(1, zoom)
+    if (next === this.zoom) return
+    this.zoom = next
+    if (this.size > 0) this.resize(this.size, true)
+  }
+
   /** 칸 한 변(px)에 대한 그리기 영역 정보. 정규화 좌표 ↔ CSS px 변환의 기준. */
   private get box(): { origin: number; span: number } {
     const margin = this.size * MARGIN_RATIO
@@ -162,9 +207,11 @@ export class DrawEngine {
   clientToNorm(clientX: number, clientY: number): Vec {
     const rect = this.visible.getBoundingClientRect()
     const { origin, span } = this.box
+    // 확대(CSS transform) 중이면 화면상 크기가 CSS 크기와 다르다. 화면 px → CSS px로 되돌린다.
+    const k = rect.width > 0 ? this.size / rect.width : 1
     return {
-      x: (clientX - rect.left - origin) / span,
-      y: (clientY - rect.top - origin) / span,
+      x: ((clientX - rect.left) * k - origin) / span,
+      y: ((clientY - rect.top) * k - origin) / span,
     }
   }
 
@@ -172,10 +219,15 @@ export class DrawEngine {
    * 캔버스 크기 재설정. 획은 정규화 좌표라 해상도에 독립적이므로 그대로 다시 그린다.
    * 인앱 브라우저는 주소창/키보드 때문에 뷰포트가 자주 바뀌어서 이 경로가 자주 호출된다.
    */
-  resize(cssSize: number): void {
-    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
-    if (cssSize === this.size && dpr === this.dpr) return
+  resize(cssSize: number, force = false): void {
+    const base = Math.min(window.devicePixelRatio || 1, MAX_DPR)
+    const dpr = Math.min(base * this.zoom, MAX_DEVICE_SIDE / Math.max(1, cssSize))
+    const target = Math.max(base, dpr)
+    if (!force && cssSize === this.size && target === this.dpr) return
+    this.resizeTo(cssSize, target)
+  }
 
+  private resizeTo(cssSize: number, dpr: number): void {
     this.size = cssSize
     this.dpr = dpr
     const device = Math.round(cssSize * dpr)
@@ -196,6 +248,7 @@ export class DrawEngine {
 
     // 마스크는 device px 기준이라 크기가 바뀌면 버린다.
     this.cellMask = null
+    this.fillRegions.clear()
 
     this.paintHints()
     this.redrawCommitted()
@@ -575,7 +628,116 @@ export class DrawEngine {
       ctx.lineWidth = 2
       ctx.stroke()
     }
+
+    // 지우개 범위. 획 단위로 지우므로 어디가 닿는지 보여야 엉뚱한 획을 지우지 않는다.
+    if (this.erasing) {
+      const c = this.toPx(this.erasing.last)
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, this.eraserRadius * this.box.span, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+    }
     ctx.restore()
+  }
+
+  /** 정규화 지우개 반경. 확대 중이면 화면에서 같은 크기로 보이도록 줄인다. */
+  private get eraserRadius(): number {
+    return ERASER_RADIUS / this.zoom
+  }
+
+  /**
+   * 채우기 획이 칠한 영역. 그 획 이전까지의 획을 따로 그려서 같은 번짐을 다시 계산한다.
+   * 지우개가 지나갈 때만 필요하고 획 목록이 바뀌면 버린다.
+   */
+  private fillRegionOf(stroke: Stroke): Uint8Array | null {
+    const cached = this.fillRegions.get(stroke)
+    if (cached) return cached
+    const index = this.strokes.indexOf(stroke)
+    if (index < 0) return null
+
+    const w = this.committed.canvas.width
+    const h = this.committed.canvas.height
+    if (w === 0 || h === 0) return null
+    const tmp = document.createElement('canvas')
+    tmp.width = w
+    tmp.height = h
+    const tctx = ctxOf(tmp)
+    tctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    tctx.lineCap = 'round'
+    tctx.lineJoin = 'round'
+    tctx.save()
+    this.outlinePath(tctx)
+    tctx.clip()
+    for (let i = 0; i < index; i++) {
+      const s = this.strokes[i]
+      if (s) this.paintStroke(tctx, s)
+    }
+    tctx.restore()
+
+    const before = tctx.getImageData(0, 0, w, h).data
+    this.paintFill(tctx, stroke)
+    const after = tctx.getImageData(0, 0, w, h).data
+    const region = new Uint8Array(w * h)
+    for (let i = 0; i < region.length; i++) {
+      region[i] = (before[i * 4 + 3] ?? 0) !== (after[i * 4 + 3] ?? 0) ? 1 : 0
+    }
+    this.fillRegions.set(stroke, region)
+    return region
+  }
+
+  /** 지우개 선분(a→b)이 이 획에 닿는지. 정규화 좌표 기준. */
+  private hits(stroke: Stroke, a: Vec, b: Vec): boolean {
+    if (stroke.mode === 'erase') return false
+    const pts = stroke.points
+
+    if (stroke.mode === 'fill') {
+      const region = this.fillRegionOf(stroke)
+      if (!region) return false
+      const w = this.committed.canvas.width
+      const h = this.committed.canvas.height
+      const pa = this.toPx(a)
+      const pb = this.toPx(b)
+      const steps = Math.max(1, Math.ceil(Math.hypot(pb.x - pa.x, pb.y - pa.y) / 2))
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps
+        const x = Math.round((pa.x + (pb.x - pa.x) * t) * this.dpr)
+        const y = Math.round((pa.y + (pb.y - pa.y) * t) * this.dpr)
+        if (x >= 0 && y >= 0 && x < w && y < h && region[y * w + x] === 1) return true
+      }
+      return false
+    }
+
+    const reach = stroke.width / 2 + this.eraserRadius
+    if (pts.length === 1) return pointSegmentDistance(pts[0]!, a, b) <= reach
+    for (let i = 1; i < pts.length; i++) {
+      if (segmentDistance(pts[i - 1]!, pts[i]!, a, b) <= reach) return true
+    }
+    return false
+  }
+
+  /** 지우개 선분에 닿은 획을 전부 뺀다. 경계 띠(hints)는 획 목록에 없어서 지워지지 않는다. */
+  private eraseAlong(a: Vec, b: Vec): void {
+    const erasing = this.erasing
+    if (!erasing) return
+    let changed = false
+    // 뒤에서부터 지워야 앞쪽 인덱스가 밀리지 않는다.
+    for (let i = this.strokes.length - 1; i >= 0; i--) {
+      const stroke = this.strokes[i]!
+      if (!this.hits(stroke, a, b)) continue
+      this.strokes.splice(i, 1)
+      erasing.removed.push({ stroke, index: i })
+      changed = true
+    }
+    erasing.last = b
+    if (changed) {
+      // 앞쪽 획이 빠지면 뒤쪽 채우기의 번짐 영역이 달라진다.
+      this.fillRegions.clear()
+      this.redrawCommitted()
+    }
+    this.present()
   }
 
   /** 연결점 근처면 정확히 그 점으로 붙인다. 양쪽 칸의 선이 반드시 만나야 하므로 필요하다. */
@@ -594,12 +756,17 @@ export class DrawEngine {
 
   beginStroke(at: Vec, device: Stroke['device'], pressure: number, now: number): void {
     this.cancelReplay()
+    if (this.tool.mode === 'erase') {
+      this.erasing = { removed: [], last: at }
+      this.eraseAlong(at, at)
+      return
+    }
     const { point, snapped } = this.snap(at)
     this.liveSnapped = snapped
     this.smoothed = { x: point.x, y: point.y }
     this.rawLast = { x: point.x, y: point.y }
     this.live = {
-      id: `s${this.strokes.length}_${Math.round(now)}`,
+      id: `s${this.seq++}_${Math.round(now)}`,
       mode: this.tool.mode,
       color: this.tool.color,
       width: this.tool.width,
@@ -613,6 +780,10 @@ export class DrawEngine {
   }
 
   extendStroke(at: Vec, pressure: number, now: number): void {
+    if (this.erasing) {
+      this.eraseAlong(this.erasing.last, at)
+      return
+    }
     const live = this.live
     if (!live) return
     // 채우기는 탭이다. 끌어도 영역이 늘어나지 않는다.
@@ -696,9 +867,18 @@ export class DrawEngine {
   }
 
   endStroke(): Stroke | null {
+    if (this.erasing) {
+      const { removed } = this.erasing
+      this.erasing = null
+      if (removed.length > 0) this.history.push({ kind: 'erase', removed })
+      this.present()
+      return null
+    }
     const live = this.live
     if (!live) return null
     this.live = null
+    this.history.push({ kind: 'add', stroke: live })
+    this.fillRegions.clear()
 
     // 끝점도 연결점에 붙인다. 기하가 바뀌므로 이 획이 그려진 픽셀은 한 번 다시 만들어야 한다.
     const tail = live.points[live.points.length - 1]
@@ -731,6 +911,12 @@ export class DrawEngine {
 
   /** pointercancel 등으로 입력이 끊긴 경우. 인앱 웹뷰에서 실제로 발생한다. */
   cancelStroke(): void {
+    // 지우개 제스처가 끊기면 이미 지운 획은 그대로 두고 이력으로 남긴다.
+    // 손가락이 닿은 만큼 지워진 게 화면에 보였으므로 되살리면 더 혼란스럽다.
+    if (this.erasing) {
+      this.endStroke()
+      return
+    }
     if (!this.live) return
     this.live = null
     this.strokes.pop()
@@ -745,8 +931,19 @@ export class DrawEngine {
       this.cancelStroke()
       return
     }
-    if (this.strokes.length === 0) return
-    this.strokes.pop()
+    const entry = this.history.pop()
+    if (!entry) return
+    if (entry.kind === 'add') {
+      const index = this.strokes.lastIndexOf(entry.stroke)
+      if (index >= 0) this.strokes.splice(index, 1)
+    } else {
+      // 지운 순서의 역순으로, 지울 당시 인덱스에 다시 끼운다.
+      for (let i = entry.removed.length - 1; i >= 0; i--) {
+        const { stroke, index } = entry.removed[i]!
+        this.strokes.splice(Math.min(index, this.strokes.length), 0, stroke)
+      }
+    }
+    this.fillRegions.clear()
     this.redrawCommitted()
     this.present()
   }
@@ -755,7 +952,10 @@ export class DrawEngine {
   reset(): void {
     this.cancelReplay()
     this.live = null
+    this.erasing = null
     this.strokes = []
+    this.history = []
+    this.fillRegions.clear()
     this.redrawCommitted()
     this.present()
   }
@@ -881,4 +1081,33 @@ export class DrawEngine {
       this.renderExport(size).toBlob(resolve, 'image/png')
     })
   }
+}
+
+function pointSegmentDistance(p: Vec, a: Vec, b: Vec): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len2 = dx * dx + dy * dy
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2))
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t))
+}
+
+function cross(o: Vec, a: Vec, b: Vec): number {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+}
+
+/** 두 선분 사이 최단 거리. 교차하면 0. */
+function segmentDistance(p1: Vec, p2: Vec, q1: Vec, q2: Vec): number {
+  const d1 = cross(q1, q2, p1)
+  const d2 = cross(q1, q2, p2)
+  const d3 = cross(p1, p2, q1)
+  const d4 = cross(p1, p2, q2)
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+    return 0
+  }
+  return Math.min(
+    pointSegmentDistance(p1, q1, q2),
+    pointSegmentDistance(p2, q1, q2),
+    pointSegmentDistance(q1, p1, p2),
+    pointSegmentDistance(q2, p1, p2),
+  )
 }

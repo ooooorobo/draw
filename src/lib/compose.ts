@@ -26,6 +26,8 @@ export type ComposeSprite = {
   scale: number
   rotation: number
   zIndex: number
+  /** 캐릭터 아래 적을 별명. 화면의 별명 보기가 켜져 있을 때만 넘어온다. */
+  label?: string
 }
 
 export type ComposeResult = {
@@ -137,6 +139,7 @@ export async function composeScene(input: {
       const fit = containRect(naturalSize(face), box)
       ctx.drawImage(face, fit.x, fit.y, fit.width, fit.height)
     }
+    if (sprite.label) drawLabel(ctx, sprite.label, spriteHeight / 2, width)
     ctx.restore()
   }
 
@@ -146,6 +149,30 @@ export async function composeScene(input: {
   if (!blob) throw new Error('이미지를 만들지 못했습니다.')
 
   return { blob, width, height, missing }
+}
+
+/**
+ * 캐릭터 아래 별명 알약. 화면의 .sprite-name과 같은 모양이다.
+ * 캐릭터 좌표계(중심 원점, 회전 적용) 안에서 그려서 화면처럼 캐릭터와 같이 기운다.
+ */
+function drawLabel(ctx: CanvasRenderingContext2D, text: string, bottom: number, sceneWidth: number): void {
+  const size = Math.max(12, Math.round(sceneWidth * 0.028))
+  ctx.font = `700 ${size}px CookieRun, system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const padX = size * 0.6
+  const h = size * 1.6
+  const w = ctx.measureText(text).width + padX * 2
+  const y = bottom + size * 0.3
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.strokeStyle = '#333333'
+  ctx.lineWidth = Math.max(1, size * 0.08)
+  ctx.beginPath()
+  ctx.roundRect(-w / 2, y, w, h, h / 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.fillStyle = '#292929'
+  ctx.fillText(text, 0, y + h / 2)
 }
 
 /** 브라우저 다운로드. 서버 왕복 없이 파일로 저장된다. */

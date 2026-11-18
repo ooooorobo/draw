@@ -79,7 +79,12 @@ export function JoinStart({ nav, flow, patch }: ScreenProps) {
         )
       }
     >
-      <SceneBoard view={view} fallbackUrl={flow.backgroundUrl} />
+      <SceneBoard
+        view={view}
+        fallbackUrl={flow.backgroundUrl}
+        showNames={flow.showNames}
+        onToggleNames={() => patch({ showNames: !flow.showNames })}
+      />
       {closed ? (
         <p className="copy">종료된 방입니다. 새로운 참여를 받지 않습니다.</p>
       ) : (
@@ -352,7 +357,13 @@ export function SceneView({
   /** 배경 + 캐릭터를 PNG 한 장으로 합친다. 저장·공유가 같은 결과를 쓴다. */
   const render = async () => {
     if (!ready) return null
-    const { url, sprites } = sceneView(ready, flow.backgroundUrl)
+    const view = sceneView(ready, flow.backgroundUrl)
+    const url = view.url
+    // 별명 보기를 켜 둔 상태면 저장 이미지에도 별명을 넣는다(보이는 그대로 저장).
+    const nicknames = new Map(ready.scene?.characters.map((c) => [c.id, c.nickname]))
+    const sprites = flow.showNames
+      ? view.sprites.map((s) => ({ ...s, label: nicknames.get(s.id) }))
+      : view.sprites
     if (!url) {
       setMessage('배경이 없어 그림을 만들 수 없어요.')
       return null
@@ -493,7 +504,12 @@ export function SceneView({
         )
       }
     >
-      <SceneBoard view={view} fallbackUrl={flow.backgroundUrl} />
+      <SceneBoard
+        view={view}
+        fallbackUrl={flow.backgroundUrl}
+        showNames={flow.showNames}
+        onToggleNames={() => patch({ showNames: !flow.showNames })}
+      />
       <div className="copy-group">
         <p className="copy">
           {closedView

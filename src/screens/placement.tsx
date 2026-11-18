@@ -121,12 +121,15 @@ function PlacementEditor({
         </button>
       }
     >
-      {/* 배경 어디서나 끌어 옮기고, 두 손가락으로 크기와 회전을 맞춘다. */}
+      {/*
+        배경 어디서나 끌어 옮기고, 두 손가락으로 크기와 회전을 맞춘다.
+        한 손가락·마우스로도 할 수 있게 캐릭터 모서리에 크기·회전 손잡이를 둔다.
+      */}
       <Stage url={backgroundUrl} stageRef={stageRef} interactive>
         {placed.map((sprite) => (
           <PlacedSprite key={sprite.id} sprite={sprite} />
         ))}
-        {mine && <PlacedSprite sprite={mine} mark="dashed" />}
+        {mine && <PlacedSprite sprite={mine} mark="dashed" handle />}
       </Stage>
       {blocked && <p className="error">{blocked}</p>}
     </Screen>
@@ -167,6 +170,10 @@ function presetBackgroundUrl(api: RelayDrawClient, catalog: Catalog): string | n
  *
  * 그리기 화면(src/draw/pointer.ts)과 달리 두 번째 포인터를 버리지 않는다. 여기서는
  * 두 손가락이 기능이다. 대신 세 번째 이후는 무시한다.
+ *
+ * 캐릭터 모서리 손잡이(.sprite-handle)를 잡으면 한 손가락으로 크기·회전을 같이 바꾼다.
+ * 캐릭터 중심에서 손가락까지의 거리비가 크기, 각도차가 회전이다(두 손가락 제스처와 같은 계산).
+ * 마우스에는 두 손가락이 없어서 데스크톱에서는 이게 유일한 회전 수단이다.
  */
 function useStageGesture(
   stageRef: RefObject<HTMLDivElement | null>,
@@ -185,6 +192,16 @@ function useStageGesture(
     let pinchStart: { spot: Spot; pinch: Pinch } | null = null
     /** 한 손가락 이동의 직전 위치. */
     let lastPoint: Touch | null = null
+    /** 손잡이 제스처. 캐릭터 중심(화면 px)을 고정점으로 쓴다. */
+    let handleStart: { spot: Spot; pinch: Pinch; centerX: number; centerY: number } | null = null
+
+    /** 캐릭터 중심과 손가락을 두 점으로 보는 가짜 두 손가락. 중심은 움직이지 않는다. */
+    const handlePinch = (touch: Touch, centerX: number, centerY: number, rect: DOMRect): Pinch => {
+      const center = { clientX: centerX, clientY: centerY }
+      const pinch = readPinch(gripOf(center, rect), gripOf(touch, rect))
+      // 위치는 바꾸지 않는다. 중심 비율 이동량이 0이 되도록 중심을 고정값으로 둔다.
+      return { ...pinch, x: 0, y: 0 }
+    }
 
     const gripOf = (touch: Touch, rect: DOMRect): Grip => ({
       ratioX: (touch.clientX - rect.left) / rect.width,
@@ -205,6 +222,29 @@ function useStageGesture(
     }
 
     const onPointerDown = (event: PointerEvent) => {
+      const rectNow = rectOf()
+      if (
+        active.size === 0 &&
+        rectNow &&
+        event.target instanceof Element &&
+        event.target.closest('.sprite-handle')
+      ) {
+        const spot = spotRef.current
+        const centerX = rectNow.left + spot.x * rectNow.width
+        const centerY = rectNow.top + spot.y * rectNow.height
+        const touch = { clientX: event.clientX, clientY: event.clientY }
+        active.set(event.pointerId, touch)
+        try {
+          stage.setPointerCapture(event.pointerId)
+        } catch {
+          // 캡처 실패는 치명적이지 않다.
+        }
+        event.preventDefault()
+        handleStart = { spot, pinch: handlePinch(touch, centerX, centerY, rectNow), centerX, centerY }
+        return
+      }
+      // 손잡이를 잡고 있는 동안에는 다른 손가락을 받지 않는다.
+      if (handleStart) return
       if (active.size >= 2) return
       active.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY })
       try {
@@ -233,6 +273,17 @@ function useStageGesture(
       const rect = rectOf()
       if (!rect) return
 
+      if (handleStart) {
+        const now = handlePinch(
+          { clientX: event.clientX, clientY: event.clientY },
+          handleStart.centerX,
+          handleStart.centerY,
+          rect,
+        )
+        onChange(pinchSpot(handleStart.spot, handleStart.pinch, now))
+        return
+      }
+
       if (active.size >= 2) {
         const now = readTwo(rect)
         if (pinchStart && now) onChange(pinchSpot(pinchStart.spot, pinchStart.pinch, now))
@@ -253,6 +304,11 @@ function useStageGesture(
         // 이미 해제된 경우.
       }
       pinchStart = null
+      if (handleStart) {
+        handleStart = null
+        lastPoint = null
+        return
+      }
       // 두 손가락 중 하나만 떼면 남은 손가락으로 이동을 이어간다.
       const [remaining] = [...active.values()]
       lastPoint = remaining ?? null

@@ -3,7 +3,7 @@ import { getApi } from '../lib/relay-draw/client.ts'
 import { errorCode, errorMessage } from '../lib/useAsync.ts'
 import { SceneView } from './participant.tsx'
 import { SceneBoard } from './scene.tsx'
-import { ErrorBox, Figure, Loading, PasswordField, Screen, Stage } from './shell.tsx'
+import { ErrorBox, Figure, Loading, PasswordField, Screen } from './shell.tsx'
 import { sceneView, useScene } from './useScene.ts'
 import { remainingLabel, type ScreenProps } from './types.ts'
 
@@ -29,11 +29,6 @@ export function ManageAuth({ nav, flow, patch }: ScreenProps) {
     nav('N10')
   }
 
-  // 시안은 캐릭터 없이 배경만 작게 보여준다.
-  const backgroundUrl =
-    view.state === 'ready' && view.data.scene
-      ? view.data.api.url(view.data.scene.background.url)
-      : flow.backgroundUrl
 
   return (
     <Screen
@@ -49,7 +44,11 @@ export function ManageAuth({ nav, flow, patch }: ScreenProps) {
         </>
       }
     >
-      <Stage url={backgroundUrl} size="preview" />
+      {/*
+        배경만 보여주면 "그림이 사라졌다"로 읽힌다. 관리할 그림이 무엇인지 보이도록
+        참여 화면과 같은 장면(배경 + 등록된 캐릭터)을 작게 보여준다.
+      */}
+      <SceneBoard view={view} fallbackUrl={flow.backgroundUrl} size="preview" />
 
       <div className="form">
         <p className="copy is-left">방을 만들 때 설정한 비밀번호를 입력해 주세요.</p>

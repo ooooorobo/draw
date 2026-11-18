@@ -16,6 +16,9 @@ export function SceneBoard({
   extra,
   selectedId = null,
   onPick,
+  showNames = false,
+  onToggleNames,
+  size,
 }: {
   view: SceneAsync
   /** 방이 아직 없을 때 보여줄 배경(방장이 고른 미리보기). */
@@ -26,6 +29,12 @@ export function SceneBoard({
   selectedId?: string | null
   /** 주면 캐릭터를 눌러 고를 수 있다(N10). */
   onPick?: (sprite: SpriteView) => void
+  /** 캐릭터 아래 별명 표시. */
+  showNames?: boolean
+  /** 주면 무대 오른쪽 위에 별명 보기 토글을 띄운다. */
+  onToggleNames?: () => void
+  /** 작은 미리보기(N04M 280px). */
+  size?: 'preview' | 'medium'
 }) {
   if (view.state === 'loading') return <Loading label="장면 불러오는 중" />
   if (view.state === 'error') {
@@ -36,7 +45,7 @@ export function SceneBoard({
   const nicknames = new Map(view.data.scene?.characters.map((c) => [c.id, c.nickname]))
 
   return (
-    <Stage url={url}>
+    <Stage url={url} size={size}>
       {sprites.map((sprite) => (
         <PlacedSprite
           key={sprite.id}
@@ -44,9 +53,21 @@ export function SceneBoard({
           mark={selectedId === sprite.id ? 'boxed' : undefined}
           onPick={onPick ? () => onPick(sprite) : undefined}
           label={nicknames.get(sprite.id)}
+          name={showNames ? nicknames.get(sprite.id) : undefined}
         />
       ))}
       {extra && <PlacedSprite sprite={extra} />}
+      {onToggleNames && sprites.length > 0 && (
+        <button
+          type="button"
+          className="name-toggle"
+          role="switch"
+          aria-checked={showNames}
+          onClick={onToggleNames}
+        >
+          별명 {showNames ? 'ON' : 'OFF'}
+        </button>
+      )}
     </Stage>
   )
 }

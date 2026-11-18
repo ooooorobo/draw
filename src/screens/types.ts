@@ -120,6 +120,9 @@ export type FlowState = {
 
   /** 마지막 오류. 예외 화면이 서버 메시지를 그대로 보여준다. */
   lastError: string | null
+
+  /** 그림 위 캐릭터 아래에 별명을 보여줄지(N04·N09·N11 토글). 화면을 오가도 유지한다. */
+  showNames: boolean
 }
 
 export const INITIAL_FLOW: FlowState = {
@@ -138,6 +141,7 @@ export const INITIAL_FLOW: FlowState = {
   face: null,
   replay: null,
   placement: null,
+  showNames: true,
   idempotencyKey: null,
   pendingDelete: null,
   lastError: null,

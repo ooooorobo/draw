@@ -141,9 +141,15 @@ export function PlacedSprite({
   mark,
   onPick,
   label,
+  name,
+  handle = false,
 }: {
   /** 포즈·얼굴 URL과 좌표를 한 덩어리로 받는다(types.ts의 sceneSprites가 만든다). */
   sprite: SpriteView
+  /** 캐릭터 아래 보여줄 별명. 없으면 표시하지 않는다(별명 보기 끔). */
+  name?: string
+  /** 배치 중인 내 캐릭터의 크기·회전 손잡이(N07). 제스처는 placement.tsx가 받는다. */
+  handle?: boolean
   /** dashed: 배치 중인 내 캐릭터(N07). boxed: 삭제 대상으로 고른 캐릭터(N10). */
   mark?: 'dashed' | 'boxed'
   /** 누르면 고르는 캐릭터(N10). */
@@ -185,6 +191,8 @@ export function PlacedSprite({
     >
       <img src={poseUrl} alt="" className="sprite-pose" />
       {faceUrl && <img src={faceUrl} alt="" className="sprite-face" style={faceBox(faceRect, canvas)} />}
+      {name && <span className="sprite-name">{name}</span>}
+      {handle && <span className="sprite-handle" aria-hidden="true" />}
     </div>
   )
 }
