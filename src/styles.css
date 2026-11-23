@@ -461,13 +461,6 @@ button:disabled {
 }
 
 /* N10: 선택한 캐릭터 강조. */
-/* 별명 표시 상자. 캐릭터 박스와 같은 자리·각도의 투명 상자, 별명은 머리 위에 붙는다(Figma N09). */
-.sprite-label {
-  position: absolute;
-  transform-origin: center;
-  pointer-events: none;
-}
-
 .sprite-name {
   position: absolute;
   left: 50%;
@@ -488,6 +481,13 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 그림 좌표의 한 점(머리 위)에 놓는 이름표. 캐릭터 회전과 무관하게 똑바로. */
+.sprite-name--at {
+  bottom: auto;
+  transform: translate(-50%, calc(-100% - 2px));
+  pointer-events: none;
 }
 
 /* "이름 보기" 스위치. Figma "공통 / 이름 보기 / ON·OFF"(112:62). 그림 오른쪽 위. */

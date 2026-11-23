@@ -134,6 +134,16 @@ export function spriteBox(
   return { left: c.x * bg.width - width / 2, top: c.y * bg.height - height / 2, width, height }
 }
 
+/**
+ * 이름표 자리: 캐릭터 가운데 위, 회전한 캐릭터의 가장 높은 곳. 이름표는 돌리지 않는다.
+ * 회전한 박스의 세로 폭 = |w·sinθ| + |h·cosθ|.
+ */
+export function labelAnchor(box: { left: number; top: number; width: number; height: number }, rotation: number) {
+  const r = (rotation * Math.PI) / 180
+  const tall = Math.abs(box.width * Math.sin(r)) + Math.abs(box.height * Math.cos(r))
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2 - tall / 2 }
+}
+
 async function loadBitmap(url: string): Promise<ImageBitmap> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`이미지를 불러오지 못했어요 (${res.status})`)
@@ -191,17 +201,17 @@ export async function renderSceneBlob(
     ctx.restore()
   }
 
-  // 별명은 모든 캐릭터 위에 올린다(화면과 같다). 캐릭터 회전을 따라 같이 기운다.
+  // 별명은 모든 캐릭터 위에 올린다(화면과 같다).
   if (options.names) {
     await document.fonts?.ready
     for (const c of ordered) {
       const name = c.nickname.trim()
       if (!name) continue
-      const box = spriteBox(c, { width: W, height: H })
+      // 캐릭터는 돌아가도 이름표는 똑바로(화면과 같다).
+      const at = labelAnchor(spriteBox(c, { width: W, height: H }), c.rotation)
       ctx.save()
-      ctx.translate(box.left + box.width / 2, box.top + box.height / 2)
-      ctx.rotate((c.rotation * Math.PI) / 180)
-      drawLabel(ctx, name, -box.height / 2, W)
+      ctx.translate(at.x, at.y)
+      drawLabel(ctx, name, 0, W)
       ctx.restore()
     }
   }
@@ -213,7 +223,7 @@ export async function renderSceneBlob(
 
 /**
  * 캐릭터 아래 별명 알약. 화면의 .sprite-name과 같은 모양이다.
- * 캐릭터 좌표계(중심 원점, 회전 적용) 안에서 그린다. top은 캐릭터 위 끝(y), 알약은 그 위에 놓인다.
+ * 원점 기준으로 그린다(x = 가운데). top은 캐릭터 위 끝(y), 알약은 그 위에 놓인다.
  */
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, top: number, sceneWidth: number): void {
   const size = Math.max(12, Math.round(sceneWidth * 0.028))

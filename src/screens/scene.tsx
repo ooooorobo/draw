@@ -3,7 +3,7 @@ import switchOff from '../assets/switch-off.svg'
 import switchOn from '../assets/switch-on.svg'
 import type { BackgroundViewV2, CharacterV2 } from '../lib/relay-draw/api-v2.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
-import { backgroundAspect, faceAssetUrl, nameTag, spriteBox } from './character-art.ts'
+import { backgroundAspect, faceAssetUrl, labelAnchor, nameTag, spriteBox } from './character-art.ts'
 import { Sprite } from './character.tsx'
 import { Stage } from './ui.tsx'
 
@@ -86,10 +86,16 @@ export function ScenePreview({
   )
 }
 
-/**
- * 캐릭터 머리 위 이름표(Figma N07·N09). 캐릭터 박스와 같은 자리·각도의 투명 상자에 붙여서
- * 캐릭터와 같이 기운다. 별명이 없는 캐릭터는 건너뛴다.
- */
+/** 이름표 하나. at은 캐릭터 머리 위 지점(labelAnchor). 캐릭터가 돌아가도 이름표는 똑바로 선다. */
+export function NameTag({ label, at }: { label: string; at: { x: number; y: number } }) {
+  return (
+    <span className="sprite-name sprite-name--at" style={{ left: at.x, top: at.y }}>
+      {label}
+    </span>
+  )
+}
+
+/** 캐릭터 머리 위 이름표(Figma N07·N09). 별명이 없는 캐릭터는 건너뛴다. */
 export function NameTags({
   characters,
   size,
@@ -104,22 +110,7 @@ export function NameTags({
       {characters.map((c) => {
         const label = nameTag(c.nickname, c.id === mineId)
         if (!label) return null
-        const box = spriteBox(c, size)
-        return (
-          <div
-            key={`name-${c.id}`}
-            className="sprite-label"
-            style={{
-              left: box.left,
-              top: box.top,
-              width: box.width,
-              height: box.height,
-              transform: c.rotation ? `rotate(${c.rotation}deg)` : undefined,
-            }}
-          >
-            <span className="sprite-name">{label}</span>
-          </div>
-        )
+        return <NameTag key={`name-${c.id}`} label={label} at={labelAnchor(spriteBox(c, size), c.rotation)} />
       })}
     </>
   )

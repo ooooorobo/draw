@@ -22,11 +22,11 @@ import {
   submitPlacement,
   trackVisit,
 } from '../lib/relay-draw/screens.ts'
-import { backgroundAspect, cropFace, faceAssetUrl, nameTag, spriteBox } from './character-art.ts'
+import { backgroundAspect, cropFace, faceAssetUrl, labelAnchor, nameTag, spriteBox } from './character-art.ts'
 import { Sprite } from './character.tsx'
 import { DrawTools, FaceBoard } from './draw-face.tsx'
 import { Missing } from './host.tsx'
-import { NameTags, NameToggle, ScenePreview } from './scene.tsx'
+import { NameTag, NameTags, NameToggle, ScenePreview } from './scene.tsx'
 import { useSaveImage } from './save-image.ts'
 import type { FlowState, PlacementDraft, ScreenProps } from './types.ts'
 import { containSize, useElementSize } from './layout.ts'
@@ -573,7 +573,6 @@ export function Placement(props: ScreenProps) {
                   >
                     <Sprite art={art} faceUrl={flow.face.url} width={mine.width} style={{ left: 0, top: 0 }} />
                     <div className="place-frame" />
-                    {flow.showNames && <span className="sprite-name">{nameTag(flow.nickname, true)}</span>}
                     {handles.map((h) => (
                       <button
                         key={h.key}
@@ -610,6 +609,10 @@ export function Placement(props: ScreenProps) {
                       </svg>
                     </button>
                   </div>
+                )}
+                {/* 내 이름표는 회전하는 배치 상자 밖에 둔다(캐릭터가 돌아도 똑바로). */}
+                {mine && placement && flow.showNames && (
+                  <NameTag label={nameTag(flow.nickname, true)} at={labelAnchor(mine, placement.rotation)} />
                 )}
               </div>
             )}
