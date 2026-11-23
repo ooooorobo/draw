@@ -32,6 +32,7 @@
   --track: #e5deb8;
   --scroll-track: #ded9bd;
   --canvas-dim: rgba(51, 51, 51, 0.3);
+  --sign-ink: #514030;
 
   --page-x: 16px;
 }
@@ -135,6 +136,32 @@ button:disabled {
   font-size: 18px;
   font-weight: 400;
   line-height: 1.5;
+}
+
+/*
+ * 나무 팻말 제목(Figma 162:107, 224×48). 제목이 길면 팻말이 가로로 늘어난다.
+ * 화면 폭을 넘으면 말줄임한다.
+ */
+.head-sign {
+  min-width: 224px;
+  max-width: 100%;
+  height: 48px;
+  margin-top: 8px;
+  padding: 2px 30px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: url('./assets/title-sign.svg') center / 100% 100% no-repeat;
+  color: var(--sign-ink);
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.head-sign > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .head-title--bold {

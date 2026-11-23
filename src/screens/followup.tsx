@@ -182,7 +182,7 @@ export function Result({ nav, flow, patch, toast }: ScreenProps) {
 
   return (
     <Page>
-      <Head title="그림방이 종료됐어요" sub={<span className="text--lead">{`<${room.title}>`}</span>} />
+      <Head title="그림방이 종료됐어요" plain sub={<span className="text--lead">{`<${room.title}>`}</span>} />
       <Body gap={34}>
         <ScenePreview
           background={background}

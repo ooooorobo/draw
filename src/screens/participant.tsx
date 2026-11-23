@@ -753,7 +753,7 @@ export function RegisterFailed(props: ScreenProps) {
 
   return (
     <Page>
-      <Head title="등록하지 못했어요" />
+      <Head title="등록하지 못했어요" plain />
       <Body gap={34}>
         <ScenePreview background={background} characters={scene?.characters} maxHeight={438}>
           {(size) => {

@@ -28,20 +28,27 @@ export function Head({
   size,
   bold,
   badge,
+  plain,
 }: {
   title: ReactNode
   sub?: ReactNode
   size?: 'xl'
   bold?: boolean
+  /**
+   * 나무 팻말 없이 글자만. 기본 제목은 Figma "타이틀 / 나무 팻말"(162:107) 위에 얹는다.
+   * 큰 제목(xl)·굵은 제목(N10)·오류 안내 화면(E01 등)은 Figma에서도 팻말이 없다.
+   */
+  plain?: boolean
   /** 제목 오른쪽 배지(N04 "방 관리"). */
   badge?: { label: string; onClick: () => void }
 }) {
-  const cls = ['head-title', size === 'xl' && 'head-title--xl', bold && 'head-title--bold']
+  const sign = !plain && !bold && size !== 'xl'
+  const cls = ['head-title', size === 'xl' && 'head-title--xl', bold && 'head-title--bold', sign && 'head-sign']
     .filter(Boolean)
     .join(' ')
   return (
     <header className="head">
-      <h1 className={cls}>{title}</h1>
+      <h1 className={cls}>{sign ? <span>{title}</span> : title}</h1>
       {sub !== undefined && <p className="head-sub">{sub}</p>}
       {badge && (
         <button type="button" className="badge" onClick={badge.onClick}>

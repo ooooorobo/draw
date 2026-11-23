@@ -296,7 +296,7 @@ export function UploadFailed({ nav, flow, patch }: ScreenProps) {
 
   return (
     <Page>
-      <Head title="사진을 불러오지 못했어요" />
+      <Head title="사진을 불러오지 못했어요" plain />
       <Body gap={54}>
         <ScenePreview background={preview} maxHeight={360} />
         <p className="text">다른 사진을 선택하거나 다시 시도해 주세요.</p>
