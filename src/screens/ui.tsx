@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type RefObject } from 'react'
+import { useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import arrowsIcon from '../assets/icon-arrows-lr.svg'
 import clockIcon from '../assets/icon-clock.svg'
 import signCross from '../assets/sign-cross.svg'
@@ -71,46 +71,7 @@ export function Body({ children, gap }: { children: ReactNode; gap?: number }) {
 
 /** stack: 첫 버튼은 한 줄을 다 쓰고 나머지는 아래 줄에 나란히(Figma N09 버튼 3개). */
 export function Foot({ children, stack }: { children: ReactNode; stack?: boolean }) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const fade = useHiddenBelow(ref)
-  const cls = ['foot', stack && 'foot--stack', fade && 'foot--fade'].filter(Boolean).join(' ')
-  return (
-    <div className={cls} ref={ref}>
-      {children}
-    </div>
-  )
-}
-
-/**
- * CTA 띠 아래로 가려진 내용이 더 있는지. 있을 때만 띠 위 그라데이션을 켠다.
- * 스크롤이 없는 화면에서 그라데이션이 바로 위 내용(썸네일 등)을 흐리게 덮지 않게 한다.
- * 문서 스크롤과, 화면 안 스크롤 목록(N05 캐릭터 목록 .char-list) 둘 다 본다.
- */
-function useHiddenBelow(ref: RefObject<HTMLDivElement | null>) {
-  const [hidden, setHidden] = useState(false)
-  useEffect(() => {
-    const foot = ref.current
-    if (!foot) return
-    const check = () => {
-      const root = document.scrollingElement ?? document.documentElement
-      let more = root.scrollHeight - root.scrollTop - window.innerHeight > 1
-      const list = foot.parentElement?.querySelector<HTMLElement>('.char-list')
-      if (list) more ||= list.scrollHeight - list.scrollTop - list.clientHeight > 1
-      setHidden(more)
-    }
-    check()
-    const observer = new ResizeObserver(check)
-    observer.observe(document.body)
-    if (foot.parentElement) observer.observe(foot.parentElement)
-    window.addEventListener('scroll', check, { passive: true, capture: true })
-    window.addEventListener('resize', check)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('scroll', check, { capture: true })
-      window.removeEventListener('resize', check)
-    }
-  }, [ref])
-  return hidden
+  return <div className={stack ? 'foot foot--stack' : 'foot'}>{children}</div>
 }
 
 /** 공통 / 입체 CTA. */

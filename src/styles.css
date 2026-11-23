@@ -309,31 +309,14 @@ button:disabled {
   display: flex;
   gap: 12px;
   margin: 0 calc(var(--page-x) * -1);
-  padding: 16px var(--page-x) max(40px, env(safe-area-inset-bottom));
-  background: var(--bg);
+  padding: 28px var(--page-x) max(40px, env(safe-area-inset-bottom));
+  /*
+   * 띠 윗부분 24px는 투명 → 배경색 그라데이션. 스크롤되는 내용이 띠 아래로 들어갈 때
+   * 칼로 자른 듯 끊기지 않고 흐려진다. 띠 안쪽이라 스크롤 없는 화면의 내용은 덮지 않는다.
+   */
+  background: linear-gradient(to bottom, var(--bg-clear), var(--bg) 24px);
 }
 
-/*
- * 스크롤되는 내용이 CTA 띠에서 칼로 자른 듯 끊기지 않게, 띠 위로 배경색 그라데이션을 덧댄다.
- * 내용 위에 얹히기만 하고 터치는 아래로 통과시킨다.
- */
-.foot::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  height: 32px;
-  background: linear-gradient(to bottom, var(--bg-clear), var(--bg));
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 150ms ease-out;
-}
-
-/* 띠 아래로 가려진 내용이 있을 때만(Foot이 판단). */
-.foot--fade::before {
-  opacity: 1;
-}
 
 /* N09: 첫 버튼 한 줄, 나머지 둘은 아래 줄에 나란히. */
 .foot--stack {
@@ -605,9 +588,7 @@ button:disabled {
   background: transparent;
 }
 
-.page--hero .foot::before {
-  display: none;
-}
+
 
 /* ---------- N02 배경 선택 ---------- */
 
@@ -679,6 +660,10 @@ button:disabled {
   flex-direction: column;
   gap: 22px;
   padding-top: 32px;
+  /* 끝까지 내리면 마지막 줄이 흐림 구간 위로 올라오게 그만큼 여백을 둔다. */
+  padding-bottom: 24px;
+  /* 하단 CTA와 같은 흐림. 목록 끝이 CTA 위에서 끊기지 않게 마지막 24px를 투명하게. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
 }
 
 .char-group {
