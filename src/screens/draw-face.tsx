@@ -65,8 +65,11 @@ function clampView(view: View, width: number, height: number): View {
   }
 }
 
-/** 카드 폭 대비 포즈 원화 크기. Figma N06(158:1709)은 343×336 카드에 원화 346px(가운데 정렬). */
-const POSE_FILL = 1.01
+/**
+ * 카드 안 포즈 원화 크기. 원화 전체가 카드에 들어가게(contain) 맞추고 가장자리 여유를 조금 둔다.
+ * 폭에 맞추면 카드(343×336)보다 키 큰 캐릭터(토끼 귀·발)가 위아래로 잘린다.
+ */
+const POSE_FILL = 0.96
 
 export type FaceDrawing = {
   engine: DrawEngine
@@ -106,8 +109,8 @@ export function FaceBoard({
   const geo = useMemo(() => faceGeometry(art), [art])
 
   // 원화 → 카드 px 배치
-  const poseSize = card.width * POSE_FILL
-  const k = poseSize / art.canvas.width
+  const k = Math.min(card.width / art.canvas.width, card.height / art.canvas.height) * POSE_FILL
+  const poseSize = art.canvas.width * k
   const poseLeft = (card.width - poseSize) / 2
   const poseTop = (card.height - (art.canvas.height * k)) / 2
   const canvasSide = Math.max(1, Math.floor(geo.canvas.width * k))
