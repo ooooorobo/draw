@@ -17,6 +17,8 @@ import { backgroundAspect, faceAssetUrl, spriteBox } from './character-art.ts'
 import { Sprite } from './character.tsx'
 import { Missing } from './host.tsx'
 import { useSaveImage } from './save-image.ts'
+import { TransformControls } from './transform-controls.tsx'
+import { clamp, fingerPair, normalizeRotation, pinchTransform, scaleFromCorner } from './transform.ts'
 import { NameTags, NameToggle, ScenePreview } from './scene.tsx'
 import type { ScreenProps } from './types.ts'
 import { useElementSize } from './layout.ts'
@@ -26,8 +28,9 @@ import { Body, Cta, ErrorNotice, Foot, Head, HScroll, Page } from './ui.tsx'
  * N10 — 방장 관리(Figma 158:2299 · 158:2020 · 171:57).
  *
  * 그림이 화면 위를 꽉 채우고(배경 cover), 아래 시트에서 캐릭터를 고른다.
- * 고른 캐릭터는 점선 상자 + 삭제 버튼이 붙고, 끌어서 옮길 수 있다.
- * 옮긴 위치는 "변경사항 저장"으로 한 번에 보낸다(PATCH admin/placements).
+ * 고른 캐릭터는 점선 상자 + 삭제 버튼(오른쪽 위)이 붙고, 끌어서 옮기고, 모서리 손잡이·두 손가락으로
+ * 크기를, 아래 회전 손잡이·두 손가락 비틀기로 각도를 바꾼다(N07 배치와 같은 도구).
+ * 바꾼 배치는 "변경사항 저장"으로 한 번에 보낸다(PATCH admin/placements, 위치·크기·회전).
  * 그림이 화면보다 크면 빈 곳을 끌어 그림을 움직인다. 가로 배경은 아래 좌우 스크롤도 있다.
  */
 export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
@@ -39,14 +42,21 @@ export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
   )
   const save = useAction(savePlacements)
   const [selected, setSelected] = useState<string | null>(flow.deleteTarget?.id ?? null)
-  /** 저장 전 옮긴 위치. 캐릭터 id → 중심 비율 좌표. */
-  const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({})
+  /** 저장 전 바꾼 배치. 캐릭터 id → 위치·크기·회전. */
+  const [moved, setMoved] = useState<Record<string, Transform>>({})
   const [areaRef, area] = useElementSize<HTMLDivElement>()
   const [rosterRef, roster] = useElementSize<HTMLDivElement>()
   const [scroll, setScroll] = useState({ left: 0, width: 0 })
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  const viewRef = useRef<HTMLDivElement | null>(null)
+  const targetRef = useRef<HTMLDivElement | null>(null)
+  /** 화면에 닿아 있는 손가락들. 두 손가락이면 고른 캐릭터 크기·회전. */
+  const pointers = useRef(new Map<number, { x: number; y: number }>())
   const drag = useRef<
-    | { kind: 'move'; id: string; startX: number; startY: number; from: { x: number; y: number } }
+    | { kind: 'move'; id: string; startX: number; startY: number; from: Transform }
+    | { kind: 'resize'; id: string; from: Transform }
+    | { kind: 'rotate'; id: string; from: Transform; startAngle: number }
+    | { kind: 'pinch'; id: string; from: Transform; distance: number; angle: number }
     | { kind: 'pan'; startX: number; startY: number; from: { x: number; y: number } }
     | null
   >(null)
@@ -80,33 +90,100 @@ export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
   const bar = scroll.width > 0 ? Math.min(1, roster.width / scroll.width) : 1
   const barLeft = scroll.width > roster.width ? (scroll.left / (scroll.width - roster.width)) * (1 - bar) : 0
 
+  const transformOf = (c: { x: number; y: number; scale: number; rotation: number }): Transform => ({
+    x: c.x,
+    y: c.y,
+    scale: c.scale,
+    rotation: c.rotation,
+  })
+  const setTransform = (id: string, t: Transform) => setMoved((m) => ({ ...m, [id]: t }))
+
+  /** 고른 캐릭터 중심(화면 좌표). 회전해도 바운딩 박스 중심은 그대로다. */
+  const targetCenter = () => {
+    const rect = targetRef.current?.getBoundingClientRect()
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null
+  }
+  const worldPoint = (e: ReactPointerEvent) => {
+    const rect = viewRef.current!.getBoundingClientRect()
+    return { x: e.clientX - rect.left + px, y: e.clientY - rect.top + py }
+  }
+  const startPinch = () => {
+    const p = fingerPair(pointers.current.values())
+    if (!p || !current) return
+    drag.current = { kind: 'pinch', id: current.id, from: transformOf(current), distance: p.distance, angle: p.angle }
+  }
+
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const target = (e.target as Element).closest('[data-id]')
-    const id = target?.getAttribute('data-id')
-    const c = id ? characters.find((it) => it.id === id) : null
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     e.currentTarget.setPointerCapture(e.pointerId)
+    if (pointers.current.size === 2) {
+      startPinch()
+      return
+    }
+    if (pointers.current.size > 2) return
+    const el = e.target as Element
+    const role = el.closest('[data-role]')?.getAttribute('data-role')
+    if (current && role === 'resize') {
+      drag.current = { kind: 'resize', id: current.id, from: transformOf(current) }
+      return
+    }
+    if (current && role === 'rotate') {
+      const c = targetCenter()
+      if (!c) return
+      drag.current = {
+        kind: 'rotate',
+        id: current.id,
+        from: transformOf(current),
+        startAngle: Math.atan2(e.clientY - c.y, e.clientX - c.x),
+      }
+      return
+    }
+    const id = el.closest('[data-id]')?.getAttribute('data-id')
+    const c = id ? characters.find((it) => it.id === id) : null
     if (c) {
       setSelected(c.id)
-      drag.current = { kind: 'move', id: c.id, startX: e.clientX, startY: e.clientY, from: { x: c.x, y: c.y } }
+      drag.current = { kind: 'move', id: c.id, startX: e.clientX, startY: e.clientY, from: transformOf(c) }
     } else {
       drag.current = { kind: 'pan', startX: e.clientX, startY: e.clientY, from: { x: px, y: py } }
     }
   }
   const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     const d = drag.current
     if (!d || worldW <= 0) return
-    if (d.kind === 'move') {
-      const next = {
+    if (d.kind === 'pinch') {
+      const p = fingerPair(pointers.current.values())
+      if (p) setTransform(d.id, { ...d.from, ...pinchTransform(d.from, d, p) })
+    } else if (d.kind === 'move') {
+      setTransform(d.id, {
+        ...d.from,
         x: clamp(d.from.x + (e.clientX - d.startX) / worldW, 0, 1),
         y: clamp(d.from.y + (e.clientY - d.startY) / worldH, 0, 1),
-      }
-      setMoved((m) => ({ ...m, [d.id]: next }))
+      })
+    } else if (d.kind === 'resize') {
+      const art = characters.find((c) => c.id === d.id)?.artwork
+      if (!art) return
+      setTransform(d.id, {
+        ...d.from,
+        scale: scaleFromCorner(d.from, worldPoint(e), { width: worldW, height: worldH }, art.canvas),
+      })
+    } else if (d.kind === 'rotate') {
+      const c = targetCenter()
+      if (!c) return
+      const angle = Math.atan2(e.clientY - c.y, e.clientX - c.x)
+      setTransform(d.id, {
+        ...d.from,
+        rotation: normalizeRotation(d.from.rotation + ((angle - d.startAngle) * 180) / Math.PI),
+      })
     } else {
       setPan({ x: d.from.x - (e.clientX - d.startX), y: d.from.y - (e.clientY - d.startY) })
     }
   }
-  const onUp = () => {
-    drag.current = null
+  const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(e.pointerId)
+    // 두 손가락 중 하나를 떼면 남은 손가락으로 이어 끌지 않는다(캐릭터가 튀지 않게).
+    if (pointers.current.size === 2) startPinch()
+    else drag.current = null
   }
 
   const askDelete = () => {
@@ -121,7 +198,7 @@ export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
       await save.run(
         roomId,
         scene.version,
-        Object.entries(moved).map(([characterId, p]) => ({ characterId, x: p.x, y: p.y })),
+        Object.entries(moved).map(([characterId, t]) => ({ characterId, ...t })),
       )
       setMoved({})
       refresh()
@@ -146,6 +223,7 @@ export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
     <section className="page page--manage">
       <div className="manage-scene" ref={areaRef}>
         <div
+          ref={viewRef}
           className="manage-view"
           onPointerDown={onDown}
           onPointerMove={onMove}
@@ -182,28 +260,54 @@ export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
                     key={`hit-${c.id}`}
                     className="manage-hit"
                     data-id={c.id}
-                    style={{ left: b.left, top: b.top, width: b.width, height: b.height }}
+                    style={{
+                      left: b.left,
+                      top: b.top,
+                      width: b.width,
+                      height: b.height,
+                      transform: c.rotation ? `rotate(${c.rotation}deg)` : undefined,
+                    }}
                   />
                 )
               })}
               {flow.showNames && <NameTags characters={ordered} size={{ width: worldW, height: worldH }} />}
-              {box && (
-                <>
-                  <div
-                    className="manage-frame"
-                    style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
-                  />
-                  <button
-                    type="button"
-                    className="manage-delete"
-                    aria-label="선택한 캐릭터 삭제"
-                    style={{ left: box.left + box.width - 13, top: box.top - 10 }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={askDelete}
+              {current && box && (
+                // 고른 캐릭터: 캐릭터와 같이 도는 상자 + 크기·회전 손잡이 + 삭제 버튼(Figma 158:2313).
+                <div
+                  ref={targetRef}
+                  className="manage-target"
+                  data-id={current.id}
+                  style={{
+                    left: box.left,
+                    top: box.top,
+                    width: box.width,
+                    height: box.height,
+                    transform: current.rotation ? `rotate(${current.rotation}deg)` : undefined,
+                  }}
+                >
+                  <TransformControls
+                    width={box.width}
+                    height={box.height}
+                    omit="tr"
+                    onRotateBy={(deg) =>
+                      setTransform(current.id, {
+                        ...transformOf(current),
+                        rotation: normalizeRotation(current.rotation + deg),
+                      })
+                    }
                   >
-                    <img src={deleteIcon} alt="" />
-                  </button>
-                </>
+                    <button
+                      type="button"
+                      className="manage-delete"
+                      aria-label="선택한 캐릭터 삭제"
+                      style={{ left: box.width - 13, top: -10 }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={askDelete}
+                    >
+                      <img src={deleteIcon} alt="" />
+                    </button>
+                  </TransformControls>
+                </div>
               )}
             </div>
           )}
@@ -261,7 +365,9 @@ export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
   )
 }
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
+/** 배경 위 캐릭터 배치(서버 좌표). */
+type Transform = { x: number; y: number; scale: number; rotation: number }
 
 /** N10C — 삭제 확인. */
 export function DeleteConfirm({ nav, flow, patch, toast }: ScreenProps) {

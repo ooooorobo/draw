@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import resizeIcon from '../assets/icon-resize.svg'
 import type { DrawEngine } from '../draw/engine.ts'
 import type { Artwork, CharacterV2, SceneV2 } from '../lib/relay-draw/api-v2.ts'
 import { NICKNAME_MAX } from '../lib/relay-draw/api-v2.ts'
@@ -28,6 +27,8 @@ import { DrawTools, FaceBoard } from './draw-face.tsx'
 import { Missing } from './host.tsx'
 import { NameTag, NameTags, NameToggle, ScenePreview } from './scene.tsx'
 import { useSaveImage } from './save-image.ts'
+import { TransformControls } from './transform-controls.tsx'
+import { clamp, fingerPair, MAX_SCALE, MIN_SCALE, normalizeRotation, pinchTransform, scaleFromCorner } from './transform.ts'
 import type { FlowState, PlacementDraft, ScreenProps } from './types.ts'
 import { containSize, useElementSize } from './layout.ts'
 import { Body, Cta, Field, Foot, Head, HScroll, Page, RemainingBar } from './ui.tsx'
@@ -333,19 +334,6 @@ function useSubmit({ nav, flow, toast }: Pick<ScreenProps, 'nav' | 'flow' | 'toa
   return { run, pending: action.pending }
 }
 
-const MIN_SCALE = 0.05
-const MAX_SCALE = 1
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-
-/** 회전이 0° 근처면 똑바로 붙인다. 손으로 정확히 0°를 맞추기 어렵다. */
-const ROTATION_SNAP = 4
-
-/** 각도를 -180~180(서버 범위)으로. 0° 근처는 0으로 붙인다. */
-function normalizeRotation(deg: number): number {
-  const d = ((((deg + 180) % 360) + 360) % 360) - 180
-  return Math.abs(d) < ROTATION_SNAP ? 0 : Math.round(d * 10) / 10
-}
-
 type Point = { x: number; y: number }
 
 /** 배치 화면 제스처. 한 손가락은 역할(이동·크기·회전·좌우 이동)별, 두 손가락은 크기+회전. */
@@ -420,11 +408,7 @@ export function Placement(props: ScreenProps) {
   }
 
   /** 지금 닿아 있는 두 손가락 사이 거리·각도. */
-  const pair = () => {
-    const [a, b] = [...pointers.current.values()]
-    if (!a || !b) return null
-    return { distance: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x) }
-  }
+  const pair = () => fingerPair(pointers.current.values())
 
   const startPinch = () => {
     const p = pair()
@@ -462,12 +446,7 @@ export function Placement(props: ScreenProps) {
     if (d.kind === 'pinch') {
       const p = pair()
       if (!p) return
-      const ratio = d.distance > 0 ? p.distance / d.distance : 1
-      setPlacement({
-        ...d.from,
-        scale: clamp(d.from.scale * ratio, MIN_SCALE, MAX_SCALE),
-        rotation: normalizeRotation(d.from.rotation + ((p.angle - d.angle) * 180) / Math.PI),
-      })
+      setPlacement({ ...d.from, ...pinchTransform(d.from, d, p) })
     } else if (d.kind === 'move') {
       setPlacement({
         ...d.from,
@@ -475,16 +454,10 @@ export function Placement(props: ScreenProps) {
         y: clamp(d.from.y + (e.clientY - d.startY) / worldH, 0, 1),
       })
     } else if (d.kind === 'resize') {
-      // 손가락 위치를 캐릭터 회전 좌표계로 되돌려 잰다. 돌린 상태에서도 모서리를 끄는 대로 커진다.
-      const p = worldPoint(e)
-      const dx = p.x - d.from.x * worldW
-      const dy = p.y - d.from.y * worldH
-      const rad = (-d.from.rotation * Math.PI) / 180
-      const lx = dx * Math.cos(rad) - dy * Math.sin(rad)
-      const ly = dx * Math.sin(rad) + dy * Math.cos(rad)
-      const ratio = art.canvas.width / art.canvas.height
-      const half = Math.max(Math.abs(lx), Math.abs(ly) * ratio)
-      setPlacement({ ...d.from, scale: clamp((half * 2) / worldW, MIN_SCALE, MAX_SCALE) })
+      setPlacement({
+        ...d.from,
+        scale: scaleFromCorner(d.from, worldPoint(e), { width: worldW, height: worldH }, art.canvas),
+      })
     } else if (d.kind === 'rotate') {
       const c = targetCenter()
       if (!c) return
@@ -505,13 +478,6 @@ export function Placement(props: ScreenProps) {
     if (pointers.current.size === 2) startPinch()
     else drag.current = null
   }
-
-  const handles = [
-    { key: 'tl', x: 0, y: 0, rotate: 0 },
-    { key: 'tr', x: 1, y: 0, rotate: 90 },
-    { key: 'bl', x: 0, y: 1, rotate: -90 },
-    { key: 'br', x: 1, y: 1, rotate: 180 },
-  ]
 
   return (
     <Page variant="tight">
@@ -572,42 +538,13 @@ export function Placement(props: ScreenProps) {
                     }}
                   >
                     <Sprite art={art} faceUrl={flow.face.url} width={mine.width} style={{ left: 0, top: 0 }} />
-                    <div className="place-frame" />
-                    {handles.map((h) => (
-                      <button
-                        key={h.key}
-                        type="button"
-                        className="place-handle"
-                        aria-label="크기 조절"
-                        data-role="resize"
-                        style={{ left: h.x * mine.width - 8, top: h.y * mine.height - 8 }}
-                      >
-                        <img src={resizeIcon} alt="" style={{ transform: `rotate(${h.rotate}deg)` }} />
-                      </button>
-                    ))}
-                    <span className="place-stalk" style={{ left: mine.width / 2 }} aria-hidden="true" />
-                    <button
-                      type="button"
-                      className="place-rotate"
-                      aria-label="회전"
-                      data-role="rotate"
-                      style={{ left: mine.width / 2 - 12 }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'ArrowLeft') setPlacement({ ...placement, rotation: normalizeRotation(placement.rotation - 15) })
-                        if (e.key === 'ArrowRight') setPlacement({ ...placement, rotation: normalizeRotation(placement.rotation + 15) })
-                      }}
-                    >
-                      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                        <path
-                          d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
+                    <TransformControls
+                      width={mine.width}
+                      height={mine.height}
+                      onRotateBy={(deg) =>
+                        setPlacement({ ...placement, rotation: normalizeRotation(placement.rotation + deg) })
+                      }
+                    />
                   </div>
                 )}
                 {/* 내 이름표는 회전하는 배치 상자 밖에 둔다(캐릭터가 돌아도 똑바로). */}

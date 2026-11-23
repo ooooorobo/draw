@@ -1263,14 +1263,17 @@ button:disabled {
   cursor: grab;
 }
 
-.manage-frame {
+/* 고른 캐릭터 상자. 캐릭터와 같이 돌고, 안의 손잡이로 크기·회전을 바꾼다. */
+.manage-target {
   position: absolute;
-  border: 1px dashed var(--ink-strong);
-  pointer-events: none;
+  transform-origin: center;
+  touch-action: none;
+  cursor: grab;
 }
 
 .manage-delete {
   position: absolute;
+  z-index: 1;
   width: 24px;
   height: 24px;
   padding: 0;
