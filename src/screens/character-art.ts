@@ -89,6 +89,13 @@ export function faceAssetUrl(character: Pick<CharacterV2, 'assets'>): string | n
   return face ? assetUrl(face.url) : null
 }
 
+/** 이름표 문구. 내 캐릭터는 "별명 · 나", 별명이 없으면 "나". */
+export function nameTag(nickname: string, mine: boolean): string {
+  const name = nickname.trim()
+  if (!mine) return name
+  return name ? `${name} · 나` : '나'
+}
+
 /** 배경 위 캐릭터 박스(px). 서버 좌표: x·y = 중심 비율, scale = 배경 너비 대비 캐릭터 너비 비율. */
 export function spriteBox(
   c: { x: number; y: number; scale: number; artwork: Artwork },

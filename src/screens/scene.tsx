@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { BackgroundViewV2, CharacterV2 } from '../lib/relay-draw/api-v2.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
-import { backgroundAspect, faceAssetUrl, spriteBox } from './character-art.ts'
+import { backgroundAspect, faceAssetUrl, nameTag, spriteBox } from './character-art.ts'
 import { Sprite } from './character.tsx'
 import { Stage } from './ui.tsx'
 
@@ -18,6 +18,7 @@ export function ScenePreview({
   onSelect,
   showNames = false,
   onToggleNames,
+  mineId,
   children,
 }: {
   background: Pick<BackgroundViewV2, 'url' | 'width' | 'height'> & { previewUrl?: string }
@@ -31,6 +32,8 @@ export function ScenePreview({
   showNames?: boolean
   /** 주면 오른쪽 위에 별명 on/off 스위치를 띄운다(N04·N09·N11). */
   onToggleNames?: () => void
+  /** 내 캐릭터 id. 이름표에 "· 나"를 붙인다(Figma N09). */
+  mineId?: string | null
   children?: (size: { width: number; height: number }) => ReactNode
 }) {
   const src = background.previewUrl ?? assetUrl(background.url)
@@ -72,43 +75,68 @@ export function ScenePreview({
                   />
                 )
               })}
-          {showNames &&
-            ordered
-              .filter((c) => c.nickname.trim())
-              .map((c) => {
-                // 캐릭터 박스를 같은 각도로 돌린 투명 상자 위에 붙여서 캐릭터와 같이 기운다(Figma 이름표).
-                const box = spriteBox(c, size)
-                return (
-                  <div
-                    key={`name-${c.id}`}
-                    className="sprite-label"
-                    style={{
-                      left: box.left,
-                      top: box.top,
-                      width: box.width,
-                      height: box.height,
-                      transform: c.rotation ? `rotate(${c.rotation}deg)` : undefined,
-                    }}
-                  >
-                    <span className="sprite-name">{c.nickname.trim()}</span>
-                  </div>
-                )
-              })}
+          {showNames && <NameTags characters={ordered} size={size} mineId={mineId} />}
           {children?.(size)}
-          {onToggleNames && characters.length > 0 && (
-            <button
-              type="button"
-              className="name-toggle"
-              role="switch"
-              aria-checked={showNames}
-              onClick={onToggleNames}
-            >
-              이름 보기
-              <span className="name-toggle-track" aria-hidden="true" />
-            </button>
-          )}
+          {onToggleNames && characters.length > 0 && <NameToggle on={showNames} onToggle={onToggleNames} />}
         </div>
       )}
     </Stage>
+  )
+}
+
+/**
+ * 캐릭터 머리 위 이름표(Figma N07·N09). 캐릭터 박스와 같은 자리·각도의 투명 상자에 붙여서
+ * 캐릭터와 같이 기운다. 별명이 없는 캐릭터는 건너뛴다.
+ */
+export function NameTags({
+  characters,
+  size,
+  mineId,
+}: {
+  characters: CharacterV2[]
+  size: { width: number; height: number }
+  mineId?: string | null
+}) {
+  return (
+    <>
+      {characters.map((c) => {
+        const label = nameTag(c.nickname, c.id === mineId)
+        if (!label) return null
+        const box = spriteBox(c, size)
+        return (
+          <div
+            key={`name-${c.id}`}
+            className="sprite-label"
+            style={{
+              left: box.left,
+              top: box.top,
+              width: box.width,
+              height: box.height,
+              transform: c.rotation ? `rotate(${c.rotation}deg)` : undefined,
+            }}
+          >
+            <span className="sprite-name">{label}</span>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+/** "이름 보기" 스위치. 그림 오른쪽 위(Figma N04·N07·N09·N09R). */
+export function NameToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className="name-toggle"
+      role="switch"
+      aria-checked={on}
+      // 배치 화면은 그림 전체가 드래그 영역이다. 스위치 누름이 드래그로 잡히지 않게 막는다.
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={onToggle}
+    >
+      이름 보기
+      <span className="name-toggle-track" aria-hidden="true" />
+    </button>
   )
 }

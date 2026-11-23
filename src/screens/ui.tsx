@@ -60,8 +60,9 @@ export function Body({ children, gap }: { children: ReactNode; gap?: number }) {
   )
 }
 
-export function Foot({ children }: { children: ReactNode }) {
-  return <div className="foot">{children}</div>
+/** stack: 첫 버튼은 한 줄을 다 쓰고 나머지는 아래 줄에 나란히(Figma N09 버튼 3개). */
+export function Foot({ children, stack }: { children: ReactNode; stack?: boolean }) {
+  return <div className={stack ? 'foot foot--stack' : 'foot'}>{children}</div>
 }
 
 /** 공통 / 입체 CTA. */

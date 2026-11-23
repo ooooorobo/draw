@@ -17,16 +17,17 @@ import {
   confirmCharacter,
   hasAdminSession,
   loadCharacters,
+  myCharacterId,
   replayBlob,
   resetSubmission,
   submitPlacement,
   trackVisit,
 } from '../lib/relay-draw/screens.ts'
-import { backgroundAspect, cropFace, faceAssetUrl, spriteBox } from './character-art.ts'
+import { backgroundAspect, cropFace, faceAssetUrl, nameTag, spriteBox } from './character-art.ts'
 import { Sprite } from './character.tsx'
 import { DrawTools, FaceBoard } from './draw-face.tsx'
 import { Missing } from './host.tsx'
-import { ScenePreview } from './scene.tsx'
+import { NameTags, NameToggle, ScenePreview } from './scene.tsx'
 import { useSaveImage } from './save-image.ts'
 import type { FlowState, PlacementDraft, ScreenProps } from './types.ts'
 import { containSize, useElementSize } from './layout.ts'
@@ -552,6 +553,12 @@ export function Placement(props: ScreenProps) {
                       />
                     )
                   })}
+                {flow.showNames && (
+                  <NameTags
+                    characters={[...others].sort((a, b) => a.zIndex - b.zIndex)}
+                    size={{ width: worldW, height: worldH }}
+                  />
+                )}
                 {mine && placement && (
                   <div
                     ref={targetRef}
@@ -567,6 +574,7 @@ export function Placement(props: ScreenProps) {
                   >
                     <Sprite art={art} faceUrl={flow.face.url} width={mine.width} style={{ left: 0, top: 0 }} />
                     <div className="place-frame" />
+                    {flow.showNames && <span className="sprite-name">{nameTag(flow.nickname, true)}</span>}
                     {handles.map((h) => (
                       <button
                         key={h.key}
@@ -605,6 +613,9 @@ export function Placement(props: ScreenProps) {
                   </div>
                 )}
               </div>
+            )}
+            {others.length > 0 && (
+              <NameToggle on={flow.showNames} onToggle={() => patch({ showNames: !flow.showNames })} />
             )}
           </div>
         </div>
@@ -654,41 +665,77 @@ function HScroll({ value, onChange }: { value: number; onChange: (value: number)
   )
 }
 
-/** N09 배치 완료 / N09R 완료자 재접속. 화면 구성이 같다. */
+/** N09 배치 완료. */
 export function JoinDone(props: ScreenProps) {
-  const { nav, flow, patch, toast } = props
-  const { scene, remaining } = useRoomScene(props)
+  return <Finished {...props} revisit={false} />
+}
+
+/** N09R 완료자 재접속. */
+export function JoinRevisit(props: ScreenProps) {
+  return <Finished {...props} revisit />
+}
+
+/**
+ * N09 / N09R. 그림은 같고 머리말·버튼이 다르다(Figma 21:1104, 21:1121).
+ *   N09: "친구들과 함께 …완성했어요!" / 이미지 저장하기(위, 넓게) + 이 방 참여하기 · 새로운 방 만들기
+ *   N09R: 종료까지 남은 시간 / 이 방 참여하기 · 이미지 저장하기
+ */
+function Finished(props: ScreenProps & { revisit: boolean }) {
+  const { nav, flow, patch, toast, revisit } = props
+  const { roomId, scene, remaining } = useRoomScene(props)
   const image = useSaveImage(toast)
   const background = sceneBackground(flow, scene)
   if (!flow.room || !background) return <Missing />
 
+  const joinAgain = () => {
+    // 추가 캐릭터 참여. 별명은 남기고 캐릭터부터 다시 고른다.
+    if (flow.face) URL.revokeObjectURL(flow.face.url)
+    patch({ pick: null, artwork: null, face: null, placement: null })
+    nav('N04')
+  }
+  const saveImage = (
+    <Cta disabled={!scene || image.saving} onClick={() => image.save(scene, flow.room?.title ?? '', flow.showNames)}>
+      이미지 저장하기
+    </Cta>
+  )
+
   return (
     <Page>
-      <Head title={`<${flow.room.title}>`} sub={remaining && `종료까지 ${remaining}`} />
+      <Head
+        title={`<${flow.room.title}>`}
+        sub={revisit ? remaining && `종료까지 ${remaining}` : '친구들과 함께 귀여운 이미지를 완성했어요!'}
+      />
       <Body gap={24}>
         <ScenePreview
           background={background}
           characters={scene?.characters}
-          maxHeight={468}
+          maxHeight={revisit ? 468 : 440}
           showNames={flow.showNames}
           onToggleNames={() => patch({ showNames: !flow.showNames })}
+          mineId={roomId ? myCharacterId(roomId) : null}
         />
       </Body>
-      <Foot>
-        <Cta
-          onClick={() => {
-            // 추가 캐릭터 참여. 별명은 남기고 캐릭터부터 다시 고른다.
-            if (flow.face) URL.revokeObjectURL(flow.face.url)
-            patch({ pick: null, artwork: null, face: null, placement: null })
-            nav('N04')
-          }}
-        >
-          이 방 참여하기
-        </Cta>
-        <Cta disabled={!scene || image.saving} onClick={() => image.save(scene, flow.room?.title ?? '', flow.showNames)}>
-          이미지 저장하기
-        </Cta>
-      </Foot>
+      {revisit ? (
+        <Foot>
+          <Cta onClick={joinAgain}>이 방 참여하기</Cta>
+          {saveImage}
+        </Foot>
+      ) : (
+        <Foot stack>
+          {saveImage}
+          <Cta onClick={joinAgain}>이 방 참여하기</Cta>
+          <Cta
+            onClick={() => {
+              // 새 방은 방장 흐름(N02)부터. 이전에 만들던 방 정보는 비운다.
+              if (flow.pendingPhoto) URL.revokeObjectURL(flow.pendingPhoto.url)
+              patch({ background: null, pendingPhoto: null, title: '', created: null })
+              nav('N02')
+            }}
+          >
+            새로운 방 만들기
+          </Cta>
+        </Foot>
+      )}
     </Page>
   )
 }
