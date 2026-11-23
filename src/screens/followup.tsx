@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import deleteIcon from '../assets/icon-delete.svg'
+import { track } from '../lib/analytics.ts'
 import { ApiError } from '../lib/relay-draw/api-client.ts'
 import { onAdminError, onLoadError } from '../lib/relay-draw/errors.ts'
 import { useAction, useAsync, useScene } from '../lib/relay-draw/hooks.ts'
@@ -200,6 +201,7 @@ export function HostManage({ nav, flow, patch, toast }: ScreenProps) {
         scene.version,
         Object.entries(moved).map(([characterId, t]) => ({ characterId, ...t })),
       )
+      track.adminSave(Object.keys(moved).length)
       setMoved({})
       refresh()
       toast('변경사항을 저장했어요.')
@@ -399,6 +401,7 @@ export function DeleteConfirm({ nav, flow, patch, toast }: ScreenProps) {
             try {
               await remove.run(roomId, [target.id])
               patch({ deleteTarget: null })
+              track.adminDelete()
               toast('캐릭터를 삭제했어요.')
               nav('N10')
             } catch (e) {

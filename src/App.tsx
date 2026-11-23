@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { trackScreen } from './lib/analytics.ts'
 import type { Entry } from './lib/relay-draw/entry.ts'
 import { useEntry } from './lib/relay-draw/hooks.ts'
 import { BadJoinLink, DeleteConfirm, HostManage, Result } from './screens/followup.tsx'
@@ -49,6 +50,29 @@ const SCREENS: Record<ScreenId, (props: ScreenProps) => ReactElement> = {
 }
 
 const TOAST_MS = 2200
+
+/** GA4 화면 이름(page_title). Figma 화면 이름과 같다. */
+const SCREEN_NAMES: Record<ScreenId, string> = {
+  N01: '시작',
+  N02: '방 만들기',
+  N02P: '업로드 배경 확인',
+  N03: '방 생성 완료',
+  N04: '최초 참여',
+  N04L: '가로 배경 참여',
+  N04M: '방 관리 인증',
+  N05: '캐릭터 선택',
+  N06: '그리기',
+  N06C: '전체모습 확인',
+  N07: '자유 배치',
+  N09: '배치 완료',
+  N09R: '완료자 재접속',
+  N10: '방장 관리',
+  N10C: '삭제 확인',
+  N11: '종료 결과',
+  E01: '배경 업로드 실패',
+  E02: '등록 실패',
+  E03: '잘못된 참여 링크',
+}
 
 export default function App() {
   const entry = useEntry()
@@ -104,6 +128,15 @@ function Flow({ entry }: { entry: Exclude<Entry, { screen: null }> }) {
     setToastMessage(message)
     toastTimer.current = setTimeout(() => setToastMessage(null), TOAST_MS)
   }, [])
+
+  // 화면이 바뀔 때마다 GA4 page_view(주소가 그대로인 앱이라 직접 보낸다).
+  // 같은 화면을 두 번 세지 않게 마지막으로 보낸 화면을 기억한다(개발 모드 StrictMode의 이펙트 재실행 포함).
+  const trackedRef = useRef<ScreenId | null>(null)
+  useEffect(() => {
+    if (trackedRef.current === screen) return
+    trackedRef.current = screen
+    trackScreen(screen, SCREEN_NAMES[screen])
+  }, [screen])
 
   const Current = SCREENS[screen]
   return (

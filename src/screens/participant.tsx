@@ -8,6 +8,7 @@ import {
   onLoadError,
   onSubmitError,
 } from '../lib/relay-draw/errors.ts'
+import { track } from '../lib/analytics.ts'
 import { useAction, useAsync, useRemaining, useRemainingRatio, useScene } from '../lib/relay-draw/hooks.ts'
 import {
   assetUrl,
@@ -63,6 +64,7 @@ export function JoinStart(props: ScreenProps) {
 
   useEffect(() => {
     if (roomId) trackVisit(roomId)
+    if (roomId) track.joinStart()
   }, [roomId])
 
   if (!flow.room || !background) return <Missing />
@@ -122,6 +124,7 @@ export function AdminAuth(props: ScreenProps) {
     setError(null)
     try {
       await auth.run(roomId, password)
+      track.adminLogin()
       nav('N10')
     } catch (e) {
       const action = onAdminAuthError(e)
@@ -193,6 +196,7 @@ export function CharacterSelect({ nav, flow, patch, toast }: ScreenProps) {
                       // 다른 포즈로 바꾸면 얼굴 영역이 달라지므로 그리던 얼굴은 버린다.
                       if (!selected) {
                         if (flow.face) URL.revokeObjectURL(flow.face.url)
+                        track.characterSelect(character.id, pose.id)
                         patch({
                           pick: { presetId: character.id, poseId: pose.id, characterName: character.name },
                           artwork: pose as Artwork,
@@ -239,6 +243,7 @@ export function DrawFace({ nav, flow, patch, toast }: ScreenProps) {
       const blob = await cropFace(engine.exportCanvas(), art)
       if (flow.face) URL.revokeObjectURL(flow.face.url)
       patch({ face: { strokes, blob, replay: replayBlob(strokes), url: URL.createObjectURL(blob) } })
+      track.drawComplete(strokes.length)
       nav('N06C')
     } catch {
       toast('그림을 저장하지 못했어요. 다시 시도해 주세요.')
@@ -336,6 +341,7 @@ function useSubmit({ nav, flow, toast }: Pick<ScreenProps, 'nav' | 'flow' | 'toa
         { face: flow.face.blob, replay: flow.face.replay },
         { x: placement.x, y: placement.y, scale: placement.scale, rotation: placement.rotation },
       )
+      track.characterSubmit()
       nav('N09')
     } catch (e) {
       const next = onSubmitError(e)

@@ -4,6 +4,7 @@ import cameraIcon from '../assets/icon-camera.svg'
 import { ADMIN_PASSWORD_MAX, ADMIN_PASSWORD_MIN } from '../lib/relay-draw/api-v2.ts'
 import { onCreateRoomError, onUploadError } from '../lib/relay-draw/errors.ts'
 import { useAction, useAsync } from '../lib/relay-draw/hooks.ts'
+import { track } from '../lib/analytics.ts'
 import { roomLink } from '../lib/relay-draw/entry.ts'
 import { assetUrl, createRoom, loadBackgrounds, loadRoom, shareRoom, uploadBackground } from '../lib/relay-draw/screens.ts'
 import { ScenePreview } from './scene.tsx'
@@ -103,6 +104,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
     try {
       const created = await create.run({ title, background: flow.background.choice, adminPassword: password })
       patch({ created })
+      track.roomCreate(flow.background.choice.type)
       nav('N03')
     } catch (e) {
       const action = onCreateRoomError(e, !!uploaded)

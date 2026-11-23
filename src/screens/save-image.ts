@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { track } from '../lib/analytics.ts'
 import type { SceneV2 } from '../lib/relay-draw/api-v2.ts'
 import { downloadBlob, saveResult } from '../lib/relay-draw/screens.ts'
 import { renderSceneBlob } from './character-art.ts'
@@ -14,6 +15,7 @@ export function useSaveImage(toast: ScreenProps['toast']) {
     try {
       const blob = await renderSceneBlob(scene, { names })
       downloadBlob(blob, `${title || 'drawing-party'}.png`)
+      track.imageSave()
       saveResult(scene.roomId, scene.version, { image: blob }).catch(() => {})
     } catch {
       toast('이미지를 저장하지 못했어요.')

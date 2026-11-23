@@ -4,6 +4,7 @@
  * 화면 ID는 Figma 최종 디자인(MVP v4) 기준. 각 함수 주석에 호출 화면과 성공 시 다음 화면을 적는다.
  * 실패 처리는 errors.ts의 on*Error로 화면 전이를 정한다.
  */
+import { track as ga } from '../analytics.ts'
 import { ApiError, type BackgroundChoice, type Placement } from './api-client.ts'
 import {
   batchDeleteCharacters,
@@ -138,6 +139,7 @@ export async function shareRoom(roomId: string, roomUrl: string, mode: 'copy' | 
       .catch(() => undefined)
     try {
       await navigator.share({ url: roomUrl, text })
+      ga.linkShare('shared')
       return 'shared'
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
@@ -145,6 +147,7 @@ export async function shareRoom(roomId: string, roomUrl: string, mode: 'copy' | 
     }
   }
   await navigator.clipboard.writeText(roomUrl)
+  ga.linkShare('copied')
   return 'copied'
 }
 
