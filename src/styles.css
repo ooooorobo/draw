@@ -109,7 +109,7 @@ button:disabled {
   max-width: 430px;
   min-height: 100dvh;
   /* 아래 여백은 하단 CTA(.foot)가 가진다. */
-  padding: 56px var(--page-x) 0;
+  padding: 24px var(--page-x) 0;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -131,7 +131,7 @@ button:disabled {
   height: 100dvh;
 }
 
-/* N07: 제목 없이 배치 뷰포트가 바로 시작한다(Figma 21:1090·79:49, 위에서 56px). */
+/* N07: 제목 없이 배치 뷰포트가 바로 시작한다(Figma 21:1090·79:49). */
 .page--tight .stage {
   align-items: flex-start;
 }
@@ -326,6 +326,13 @@ button:disabled {
   height: 32px;
   background: linear-gradient(to bottom, var(--bg-clear), var(--bg));
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+/* 띠 아래로 가려진 내용이 있을 때만(Foot이 판단). */
+.foot--fade::before {
+  opacity: 1;
 }
 
 /* N09: 첫 버튼 한 줄, 나머지 둘은 아래 줄에 나란히. */
