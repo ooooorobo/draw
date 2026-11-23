@@ -161,7 +161,7 @@ export function DeleteConfirm({ nav, flow, patch, toast }: ScreenProps) {
 }
 
 /** N11 — 종료 결과. */
-export function Result({ nav, flow, toast }: ScreenProps) {
+export function Result({ nav, flow, patch, toast }: ScreenProps) {
   const roomId = flow.room?.roomId ?? null
   const { scene, error } = useScene(roomId)
   const image = useSaveImage(toast)
@@ -184,11 +184,17 @@ export function Result({ nav, flow, toast }: ScreenProps) {
     <Page>
       <Head title="그림방이 종료됐어요" sub={<span className="text--lead">{`<${room.title}>`}</span>} />
       <Body gap={34}>
-        <ScenePreview background={background} characters={scene?.characters} maxHeight={468} />
+        <ScenePreview
+          background={background}
+          characters={scene?.characters}
+          maxHeight={468}
+          showNames={flow.showNames}
+          onToggleNames={() => patch({ showNames: !flow.showNames })}
+        />
         <p className="text">완성된 그림을 저장하거나 공유해 보세요.</p>
       </Body>
       <Foot>
-        <Cta disabled={!scene || image.saving} onClick={() => image.save(scene, room.title)}>
+        <Cta disabled={!scene || image.saving} onClick={() => image.save(scene, room.title, flow.showNames)}>
           이미지 저장
         </Cta>
         <Cta

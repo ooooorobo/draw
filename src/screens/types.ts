@@ -30,7 +30,13 @@ export type DrawnFace = {
 }
 
 /** 배경 기준 캐릭터 위치(서버 좌표계와 같다). */
-export type PlacementDraft = { x: number; y: number; scale: number }
+export type PlacementDraft = {
+  x: number
+  y: number
+  scale: number
+  /** 시계 방향 각도(도, -180~180). 서버 rotation과 같다. */
+  rotation: number
+}
 
 export type FlowState = {
   // 방장
@@ -48,6 +54,9 @@ export type FlowState = {
   face: DrawnFace | null
   placement: PlacementDraft | null
 
+  /** 그림 위 캐릭터 아래에 별명을 보여줄지(N04·N09·N11 토글). 화면을 오가도 유지한다. */
+  showNames: boolean
+
   /** N10에서 고른 삭제 대상. */
   deleteTarget: { id: string; artwork: Artwork; faceUrl: string | null } | null
 }
@@ -63,6 +72,7 @@ export const INITIAL_FLOW: FlowState = {
   artwork: null,
   face: null,
   placement: null,
+  showNames: true,
   deleteTarget: null,
 }
 

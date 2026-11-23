@@ -76,7 +76,13 @@ export function JoinStart(props: ScreenProps) {
         }}
       />
       <Body gap={64}>
-        <ScenePreview background={background} characters={scene?.characters} maxHeight={410} />
+        <ScenePreview
+          background={background}
+          characters={scene?.characters}
+          maxHeight={410}
+          showNames={flow.showNames}
+          onToggleNames={() => patch({ showNames: !flow.showNames })}
+        />
         <Field
           label="별명"
           value={flow.nickname}
@@ -122,7 +128,7 @@ export function AdminAuth(props: ScreenProps) {
     <Page>
       <Head title="방 관리" />
       <Body gap={44}>
-        <ScenePreview background={background} maxHeight={280} />
+        <ScenePreview background={background} characters={scene?.characters} maxHeight={280} />
         <div className="field" style={{ gap: 18 }}>
           <p className="text" style={{ textAlign: 'left' }}>
             방을 만들 때 설정한 비밀번호를 입력해 주세요.
@@ -315,7 +321,7 @@ function useSubmit({ nav, flow, toast }: Pick<ScreenProps, 'nav' | 'flow' | 'toa
       await action.run(
         flow.room.roomId,
         { face: flow.face.blob, replay: flow.face.replay },
-        { x: placement.x, y: placement.y, scale: placement.scale, rotation: 0 },
+        { x: placement.x, y: placement.y, scale: placement.scale, rotation: placement.rotation },
       )
       nav('N09')
     } catch (e) {
@@ -331,6 +337,25 @@ const MIN_SCALE = 0.05
 const MAX_SCALE = 1
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
+/** 회전이 0° 근처면 똑바로 붙인다. 손으로 정확히 0°를 맞추기 어렵다. */
+const ROTATION_SNAP = 4
+
+/** 각도를 -180~180(서버 범위)으로. 0° 근처는 0으로 붙인다. */
+function normalizeRotation(deg: number): number {
+  const d = ((((deg + 180) % 360) + 360) % 360) - 180
+  return Math.abs(d) < ROTATION_SNAP ? 0 : Math.round(d * 10) / 10
+}
+
+type Point = { x: number; y: number }
+
+/** 배치 화면 제스처. 한 손가락은 역할(이동·크기·회전·좌우 이동)별, 두 손가락은 크기+회전. */
+type PlaceGesture =
+  | { kind: 'move'; startX: number; startY: number; from: PlacementDraft }
+  | { kind: 'resize'; from: PlacementDraft }
+  | { kind: 'rotate'; from: PlacementDraft; startAngle: number }
+  | { kind: 'pan'; startX: number; from: number }
+  | { kind: 'pinch'; from: PlacementDraft; distance: number; angle: number }
+
 /**
  * N07 — 자유 배치.
  *
@@ -345,12 +370,10 @@ export function Placement(props: ScreenProps) {
   const [stageRef, stage] = useElementSize<HTMLDivElement>()
   const viewRef = useRef<HTMLDivElement | null>(null)
   const [offset, setOffset] = useState(0)
-  const drag = useRef<
-    | { kind: 'move'; startX: number; startY: number; from: PlacementDraft }
-    | { kind: 'resize'; from: PlacementDraft }
-    | { kind: 'pan'; startX: number; from: number }
-    | null
-  >(null)
+  const targetRef = useRef<HTMLDivElement | null>(null)
+  const drag = useRef<PlaceGesture | null>(null)
+  /** 화면에 닿아 있는 손가락(포인터)들의 현재 위치. 두 손가락 제스처 판정에 쓴다. */
+  const pointers = useRef(new Map<number, Point>())
 
   const background = sceneBackground(flow, scene)
   const art = flow.artwork
@@ -371,7 +394,12 @@ export function Placement(props: ScreenProps) {
   const placement: PlacementDraft | null =
     flow.placement ??
     (worldW
-      ? { x: (ox + viewW / 2) / worldW, y: 0.6, scale: clamp((viewW * 0.34) / worldW, MIN_SCALE, MAX_SCALE) }
+      ? {
+          x: (ox + viewW / 2) / worldW,
+          y: 0.6,
+          scale: clamp((viewW * 0.34) / worldW, MIN_SCALE, MAX_SCALE),
+          rotation: 0,
+        }
       : null)
 
   if (!flow.room || !background || !art || !flow.face) return <Missing onBack={() => nav('N06C')} />
@@ -385,34 +413,97 @@ export function Placement(props: ScreenProps) {
     return { x: e.clientX - rect.left + ox, y: e.clientY - rect.top }
   }
 
+  /** 내 캐릭터 중심(화면 좌표). 회전해도 바운딩 박스 중심은 그대로다. */
+  const targetCenter = (): Point | null => {
+    const rect = targetRef.current?.getBoundingClientRect()
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null
+  }
+
+  /** 지금 닿아 있는 두 손가락 사이 거리·각도. */
+  const pair = () => {
+    const [a, b] = [...pointers.current.values()]
+    if (!a || !b) return null
+    return { distance: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x) }
+  }
+
+  const startPinch = () => {
+    const p = pair()
+    if (!p || !placement) return
+    drag.current = { kind: 'pinch', from: placement, distance: p.distance, angle: p.angle }
+  }
+
+  const onDown = (e: ReactPointerEvent) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    e.currentTarget.setPointerCapture(e.pointerId)
+    // 두 번째 손가락이 닿으면 어디서든 내 캐릭터 크기·회전으로 바꾼다. 캐릭터가 작아도 집기 쉽다.
+    if (pointers.current.size === 2) {
+      startPinch()
+      return
+    }
+    if (pointers.current.size > 2 || !placement) return
+    const role = (e.target as Element).closest('[data-role]')?.getAttribute('data-role')
+    if (role === 'resize') {
+      drag.current = { kind: 'resize', from: placement }
+    } else if (role === 'rotate') {
+      const c = targetCenter()
+      if (!c) return
+      drag.current = { kind: 'rotate', from: placement, startAngle: Math.atan2(e.clientY - c.y, e.clientX - c.x) }
+    } else if (role === 'target') {
+      drag.current = { kind: 'move', startX: e.clientX, startY: e.clientY, from: placement }
+    } else if (maxOffset > 0) {
+      drag.current = { kind: 'pan', startX: e.clientX, from: ox }
+    }
+  }
+
   const onMove = (e: ReactPointerEvent) => {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     const d = drag.current
     if (!d || !placement) return
-    if (d.kind === 'move') {
+    if (d.kind === 'pinch') {
+      const p = pair()
+      if (!p) return
+      const ratio = d.distance > 0 ? p.distance / d.distance : 1
+      setPlacement({
+        ...d.from,
+        scale: clamp(d.from.scale * ratio, MIN_SCALE, MAX_SCALE),
+        rotation: normalizeRotation(d.from.rotation + ((p.angle - d.angle) * 180) / Math.PI),
+      })
+    } else if (d.kind === 'move') {
       setPlacement({
         ...d.from,
         x: clamp(d.from.x + (e.clientX - d.startX) / worldW, 0, 1),
         y: clamp(d.from.y + (e.clientY - d.startY) / worldH, 0, 1),
       })
     } else if (d.kind === 'resize') {
+      // 손가락 위치를 캐릭터 회전 좌표계로 되돌려 잰다. 돌린 상태에서도 모서리를 끄는 대로 커진다.
       const p = worldPoint(e)
-      const cx = d.from.x * worldW
-      const cy = d.from.y * worldH
+      const dx = p.x - d.from.x * worldW
+      const dy = p.y - d.from.y * worldH
+      const rad = (-d.from.rotation * Math.PI) / 180
+      const lx = dx * Math.cos(rad) - dy * Math.sin(rad)
+      const ly = dx * Math.sin(rad) + dy * Math.cos(rad)
       const ratio = art.canvas.width / art.canvas.height
-      const half = Math.max(Math.abs(p.x - cx), Math.abs(p.y - cy) * ratio)
+      const half = Math.max(Math.abs(lx), Math.abs(ly) * ratio)
       setPlacement({ ...d.from, scale: clamp((half * 2) / worldW, MIN_SCALE, MAX_SCALE) })
+    } else if (d.kind === 'rotate') {
+      const c = targetCenter()
+      if (!c) return
+      const angle = Math.atan2(e.clientY - c.y, e.clientX - c.x)
+      setPlacement({
+        ...d.from,
+        rotation: normalizeRotation(d.from.rotation + ((angle - d.startAngle) * 180) / Math.PI),
+      })
     } else {
       setOffset(clamp(d.from - (e.clientX - d.startX), 0, maxOffset))
     }
   }
 
-  const begin = (e: ReactPointerEvent, next: NonNullable<typeof drag.current>) => {
-    e.stopPropagation()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    drag.current = next
-  }
-  const end = () => {
-    drag.current = null
+  const onUp = (e: ReactPointerEvent) => {
+    pointers.current.delete(e.pointerId)
+    // 두 손가락 중 하나를 떼면 남은 손가락으로 이어서 끌지 않는다(캐릭터가 튀는 것을 막는다).
+    // 세 손가락 이상이었다가 둘이 남으면 그 둘로 다시 시작한다.
+    if (pointers.current.size === 2) startPinch()
+    else drag.current = null
   }
 
   const handles = [
@@ -430,10 +521,10 @@ export function Placement(props: ScreenProps) {
             ref={viewRef}
             className="place-view"
             style={{ width: viewW, height: worldH, flex: 'none' }}
-            onPointerDown={(e) => maxOffset > 0 && begin(e, { kind: 'pan', startX: e.clientX, from: ox })}
+            onPointerDown={onDown}
             onPointerMove={onMove}
-            onPointerUp={end}
-            onPointerCancel={end}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
           >
             {worldH > 0 && (
               <div className="place-world" style={{ width: worldW, transform: `translateX(${-ox}px)` }}>
@@ -463,14 +554,16 @@ export function Placement(props: ScreenProps) {
                   })}
                 {mine && placement && (
                   <div
+                    ref={targetRef}
                     className="place-target"
-                    style={{ left: mine.left, top: mine.top, width: mine.width, height: mine.height }}
-                    onPointerDown={(e) =>
-                      begin(e, { kind: 'move', startX: e.clientX, startY: e.clientY, from: placement })
-                    }
-                    onPointerMove={onMove}
-                    onPointerUp={end}
-                    onPointerCancel={end}
+                    data-role="target"
+                    style={{
+                      left: mine.left,
+                      top: mine.top,
+                      width: mine.width,
+                      height: mine.height,
+                      transform: placement.rotation ? `rotate(${placement.rotation}deg)` : undefined,
+                    }}
                   >
                     <Sprite art={art} faceUrl={flow.face.url} width={mine.width} style={{ left: 0, top: 0 }} />
                     <div className="place-frame" />
@@ -480,15 +573,35 @@ export function Placement(props: ScreenProps) {
                         type="button"
                         className="place-handle"
                         aria-label="크기 조절"
+                        data-role="resize"
                         style={{ left: h.x * mine.width - 8, top: h.y * mine.height - 8 }}
-                        onPointerDown={(e) => begin(e, { kind: 'resize', from: placement })}
-                        onPointerMove={onMove}
-                        onPointerUp={end}
-                        onPointerCancel={end}
                       >
                         <img src={resizeIcon} alt="" style={{ transform: `rotate(${h.rotate}deg)` }} />
                       </button>
                     ))}
+                    <span className="place-stalk" style={{ left: mine.width / 2 }} aria-hidden="true" />
+                    <button
+                      type="button"
+                      className="place-rotate"
+                      aria-label="회전"
+                      data-role="rotate"
+                      style={{ left: mine.width / 2 - 12 }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'ArrowLeft') setPlacement({ ...placement, rotation: normalizeRotation(placement.rotation - 15) })
+                        if (e.key === 'ArrowRight') setPlacement({ ...placement, rotation: normalizeRotation(placement.rotation + 15) })
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                        <path
+                          d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
                   </div>
                 )}
               </div>
@@ -557,6 +670,8 @@ export function JoinDone(props: ScreenProps) {
           background={background}
           characters={scene?.characters}
           maxHeight={468}
+          showNames={flow.showNames}
+          onToggleNames={() => patch({ showNames: !flow.showNames })}
         />
       </Body>
       <Foot>
@@ -570,7 +685,7 @@ export function JoinDone(props: ScreenProps) {
         >
           이 방 참여하기
         </Cta>
-        <Cta disabled={!scene || image.saving} onClick={() => image.save(scene, flow.room?.title ?? '')}>
+        <Cta disabled={!scene || image.saving} onClick={() => image.save(scene, flow.room?.title ?? '', flow.showNames)}>
           이미지 저장하기
         </Cta>
       </Foot>
@@ -596,7 +711,18 @@ export function RegisterFailed(props: ScreenProps) {
         <ScenePreview background={background} characters={scene?.characters} maxHeight={438}>
           {(size) => {
             const box = spriteBox({ ...placement, artwork }, size)
-            return <Sprite art={artwork} faceUrl={face.url} width={box.width} style={{ left: box.left, top: box.top }} />
+            return (
+              <Sprite
+                art={artwork}
+                faceUrl={face.url}
+                width={box.width}
+                style={{
+                  left: box.left,
+                  top: box.top,
+                  transform: placement.rotation ? `rotate(${placement.rotation}deg)` : undefined,
+                }}
+              />
+            )
           }}
         </ScenePreview>
         <div className="head" style={{ gap: 11 }}>

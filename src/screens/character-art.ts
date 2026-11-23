@@ -109,10 +109,13 @@ async function loadBitmap(url: string): Promise<ImageBitmap> {
  * 저장용 합성 PNG. 배경 원본 크기에 캐릭터를 scene 좌표대로 올린다.
  * 서버는 합성하지 않는다(결과 저장 API 문서). 이미지는 fetch → Blob으로 받아 캔버스가 오염되지 않게 한다.
  */
-export async function renderSceneBlob(scene: {
-  background: { url: string; width: number | null; height: number | null }
-  characters: CharacterV2[]
-}): Promise<Blob> {
+export async function renderSceneBlob(
+  scene: {
+    background: { url: string; width: number | null; height: number | null }
+    characters: CharacterV2[]
+  },
+  options: { names?: boolean } = {},
+): Promise<Blob> {
   const bg = await loadBitmap(assetUrl(scene.background.url))
   const W = bg.width
   const H = bg.height
@@ -151,9 +154,48 @@ export async function renderSceneBlob(scene: {
     ctx.restore()
   }
 
+  // 별명은 모든 캐릭터 위에 올린다(화면과 같다). 캐릭터 회전을 따라 같이 기운다.
+  if (options.names) {
+    await document.fonts?.ready
+    for (const c of ordered) {
+      const name = c.nickname.trim()
+      if (!name) continue
+      const box = spriteBox(c, { width: W, height: H })
+      ctx.save()
+      ctx.translate(box.left + box.width / 2, box.top + box.height / 2)
+      ctx.rotate((c.rotation * Math.PI) / 180)
+      drawLabel(ctx, name, -box.height / 2, W)
+      ctx.restore()
+    }
+  }
+
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('이미지 생성 실패'))), 'image/png')
   })
+}
+
+/**
+ * 캐릭터 아래 별명 알약. 화면의 .sprite-name과 같은 모양이다.
+ * 캐릭터 좌표계(중심 원점, 회전 적용) 안에서 그린다. top은 캐릭터 위 끝(y), 알약은 그 위에 놓인다.
+ */
+function drawLabel(ctx: CanvasRenderingContext2D, text: string, top: number, sceneWidth: number): void {
+  const size = Math.max(12, Math.round(sceneWidth * 0.028))
+  ctx.font = `700 ${size}px CookieRun, 'Noto Sans KR', system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const padX = size * 0.6
+  const h = size * 1.6
+  const w = ctx.measureText(text).width + padX * 2
+  const y = top - size * 0.2 - h
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.strokeStyle = '#333333'
+  ctx.lineWidth = Math.max(1, size * 0.08)
+  ctx.beginPath()
+  ctx.roundRect(-w / 2, y, w, h, h / 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.fillStyle = '#292929'
+  ctx.fillText(text, 0, y + h / 2)
 }
 
 /** 업로드 배경 크기를 서버가 못 읽었으면 세로(디자인 기본 비율)로 본다. */

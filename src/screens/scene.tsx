@@ -16,6 +16,8 @@ export function ScenePreview({
   maxWidth,
   highlightId,
   onSelect,
+  showNames = false,
+  onToggleNames,
   children,
 }: {
   background: Pick<BackgroundViewV2, 'url' | 'width' | 'height'> & { previewUrl?: string }
@@ -25,6 +27,10 @@ export function ScenePreview({
   /** N10 선택 강조. */
   highlightId?: string | null
   onSelect?: (id: string) => void
+  /** 캐릭터 아래 별명 표시. */
+  showNames?: boolean
+  /** 주면 오른쪽 위에 별명 on/off 스위치를 띄운다(N04·N09·N11). */
+  onToggleNames?: () => void
   children?: (size: { width: number; height: number }) => ReactNode
 }) {
   const src = background.previewUrl ?? assetUrl(background.url)
@@ -66,7 +72,41 @@ export function ScenePreview({
                   />
                 )
               })}
+          {showNames &&
+            ordered
+              .filter((c) => c.nickname.trim())
+              .map((c) => {
+                // 캐릭터 박스를 같은 각도로 돌린 투명 상자 위에 붙여서 캐릭터와 같이 기운다(Figma 이름표).
+                const box = spriteBox(c, size)
+                return (
+                  <div
+                    key={`name-${c.id}`}
+                    className="sprite-label"
+                    style={{
+                      left: box.left,
+                      top: box.top,
+                      width: box.width,
+                      height: box.height,
+                      transform: c.rotation ? `rotate(${c.rotation}deg)` : undefined,
+                    }}
+                  >
+                    <span className="sprite-name">{c.nickname.trim()}</span>
+                  </div>
+                )
+              })}
           {children?.(size)}
+          {onToggleNames && characters.length > 0 && (
+            <button
+              type="button"
+              className="name-toggle"
+              role="switch"
+              aria-checked={showNames}
+              onClick={onToggleNames}
+            >
+              이름 보기
+              <span className="name-toggle-track" aria-hidden="true" />
+            </button>
+          )}
         </div>
       )}
     </Stage>

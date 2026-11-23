@@ -62,6 +62,18 @@ input {
 
 button {
   cursor: pointer;
+  /*
+   * iOS Safari는 버튼에 자체 배경·그라데이션을 깔고, 비활성 버튼을 반투명 + 회색 글자로 덮는다.
+   * 그게 CTA 위에 흰 막이 씌워진 것처럼 보여서 전부 끈다. 비활성 모양은 각 컴포넌트가 정한다.
+   */
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  opacity: 1;
+  -webkit-text-fill-color: currentColor;
 }
 
 /* ---------- 앱 프레임 ---------- */
@@ -347,6 +359,77 @@ button {
 }
 
 /* N10: 선택한 캐릭터 강조. */
+/* 별명 표시 상자. 캐릭터 박스와 같은 자리·각도의 투명 상자, 별명은 머리 위에 붙는다(Figma N09). */
+.sprite-label {
+  position: absolute;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.sprite-name {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translate(-50%, -2px);
+  max-width: 200%;
+  padding: 1px 7px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "이름 보기" 스위치(N04·N09·N11). 그림 오른쪽 위. Figma: 흰 알약 + 오른쪽 토글. */
+.name-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.name-toggle-track {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--placeholder);
+  transition: background 120ms ease-out;
+}
+
+.name-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 120ms ease-out;
+}
+
+.name-toggle[aria-checked='true'] .name-toggle-track {
+  background: var(--ink-strong);
+}
+
+.name-toggle[aria-checked='true'] .name-toggle-track::after {
+  transform: translateX(10px);
+}
+
 .sprite-mark {
   position: absolute;
   border: 2px solid var(--ink-strong);
@@ -508,10 +591,33 @@ button {
   border-radius: 8px;
   background: #fff;
   overflow: hidden;
+  /* 카드 전체가 입력판이다. 두 손가락 확대를 브라우저 페이지 확대가 가로채지 않게 한다. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.draw-card > * {
+/* 확대 레이어. transform은 FaceBoard가 직접 쓴다(원점 좌상단 기준 translate → scale). */
+.draw-zoom {
   position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+.draw-zoom > * {
+  position: absolute;
+}
+
+.draw-zoom-reset {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* 얼굴 밖을 30% 어둡게. 그릴 곳이 얼굴 영역이라는 것만 남긴다. */
@@ -535,9 +641,11 @@ button {
 }
 
 .pen-options {
+  position: relative;
   align-self: center;
   width: 300px;
   max-width: 100%;
+  min-width: 0;
   padding: 14px 16px;
   border: 1px solid var(--ink-strong);
   border-radius: 16px;
@@ -547,12 +655,16 @@ button {
   gap: 14px;
 }
 
+/* 기본 6색 + 팔레트 버튼. 좁은 화면에서도 한 줄 안에 들어가게 간격을 나눠 쓴다. */
 .swatches {
   display: flex;
-  gap: 16px;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
 }
 
 .swatch {
+  flex: none;
   width: 26px;
   height: 26px;
   padding: 0;
@@ -564,6 +676,71 @@ button {
   box-shadow:
     0 0 0 2px #fff,
     0 0 0 4px var(--ink-strong);
+}
+
+/* 팔레트 버튼. 고른 추가 색이 없으면 무지개, 있으면 그 색 + 무지개 테두리. */
+.swatch--custom {
+  background: conic-gradient(#ff5a4f, #ffe14d, #6fd36f, #3fc6c6, #2f6fd6, #c03a8a, #ff5a4f);
+}
+
+.swatch--custom.has-color {
+  background:
+    radial-gradient(circle, var(--custom) 0 9px, transparent 10px),
+    conic-gradient(#ff5a4f, #ffe14d, #6fd36f, #3fc6c6, #2f6fd6, #c03a8a, #ff5a4f);
+}
+
+/* 추가 색 팝오버. 펜 옵션 바로 위에 뜬다. */
+.palette-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  padding: 12px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 0 #000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 26px);
+  justify-content: space-between;
+  row-gap: 10px;
+  /* 선택 테두리 여유. */
+  padding: 4px;
+}
+
+/* 흰색도 고를 수 있어서 밝은 색은 테두리가 있어야 보인다. */
+.palette-grid .swatch {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.palette-grid .swatch[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--ink-strong);
+}
+
+.palette-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.palette-picker input {
+  width: 32px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--tile-line);
+  border-radius: 6px;
+  background: none;
 }
 
 .width-row {
@@ -581,6 +758,7 @@ button {
 /* 굵기 슬라이더. 트랙 2px, 지나온 쪽은 진하게. */
 .width-slider {
   flex: 1;
+  min-width: 0;
   height: 16px;
   margin: 0;
   appearance: none;
@@ -709,6 +887,36 @@ button {
   display: block;
   width: 12px;
   height: 12px;
+  pointer-events: none;
+}
+
+/* 회전 손잡이. 캐릭터 위 가운데에 짧은 줄로 매달려 있고, 캐릭터와 같이 돈다. */
+.place-stalk {
+  position: absolute;
+  top: -20px;
+  width: 1px;
+  height: 18px;
+  border-left: 1px dashed var(--ink-strong);
+  pointer-events: none;
+}
+
+.place-rotate {
+  position: absolute;
+  top: -44px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--ink-strong);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink-strong);
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.place-rotate svg {
   pointer-events: none;
 }
 
