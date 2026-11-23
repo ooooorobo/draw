@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import arrowsIcon from '../assets/icon-arrows-lr.svg'
 import resizeIcon from '../assets/icon-resize.svg'
 import type { DrawEngine } from '../draw/engine.ts'
 import type { Artwork, CharacterV2, SceneV2 } from '../lib/relay-draw/api-v2.ts'
@@ -10,7 +9,7 @@ import {
   onLoadError,
   onSubmitError,
 } from '../lib/relay-draw/errors.ts'
-import { useAction, useAsync, useRemaining, useScene } from '../lib/relay-draw/hooks.ts'
+import { useAction, useAsync, useRemaining, useRemainingRatio, useScene } from '../lib/relay-draw/hooks.ts'
 import {
   assetUrl,
   authenticateAdmin,
@@ -31,13 +30,14 @@ import { NameTags, NameToggle, ScenePreview } from './scene.tsx'
 import { useSaveImage } from './save-image.ts'
 import type { FlowState, PlacementDraft, ScreenProps } from './types.ts'
 import { containSize, useElementSize } from './layout.ts'
-import { Body, Cta, Field, Foot, Head, Page } from './ui.tsx'
+import { Body, Cta, Field, Foot, Head, HScroll, Page, RemainingBar } from './ui.tsx'
 
 /** 방이 있어야 하는 화면 공통. scene 폴링 + 오류 시 화면 전이. */
 function useRoomScene({ flow, nav, toast }: Pick<ScreenProps, 'flow' | 'nav' | 'toast'>) {
   const roomId = flow.room?.roomId ?? null
   const { scene, fetchedAt, error, refresh } = useScene(roomId)
   const remaining = useRemaining(scene ?? flow.room, fetchedAt)
+  const ratio = useRemainingRatio(scene ?? flow.room, fetchedAt)
 
   useEffect(() => {
     if (!error) return
@@ -46,7 +46,7 @@ function useRoomScene({ flow, nav, toast }: Pick<ScreenProps, 'flow' | 'nav' | '
     else if (!scene) toast(action.message)
   }, [error, nav, scene, toast])
 
-  return { roomId, scene, remaining, refresh }
+  return { roomId, scene, remaining, ratio, refresh }
 }
 
 /** scene이 오기 전에도 배경은 room 정보로 바로 그린다. */
@@ -57,7 +57,7 @@ function sceneBackground(flow: FlowState, scene: SceneV2 | null) {
 /** N04 / N04L — 최초 참여. 배경이 가로면 미리보기가 가로로 그려진다(N04L). */
 export function JoinStart(props: ScreenProps) {
   const { nav, flow, patch } = props
-  const { roomId, scene, remaining } = useRoomScene(props)
+  const { roomId, scene, remaining, ratio } = useRoomScene(props)
   const background = sceneBackground(flow, scene)
 
   useEffect(() => {
@@ -68,22 +68,24 @@ export function JoinStart(props: ScreenProps) {
 
   return (
     <Page>
-      <Head
-        title={`<${flow.room.title}>`}
-        sub={remaining && `종료까지 ${remaining}`}
-        badge={{
-          label: '방 관리',
-          onClick: () => nav(roomId && hasAdminSession(roomId) ? 'N10' : 'N04M'),
-        }}
-      />
-      <Body gap={64}>
+      <Head title={flow.room.title} />
+      <RemainingBar label={remaining} ratio={ratio} />
+      <Body gap={16}>
         <ScenePreview
           background={background}
           characters={scene?.characters}
-          maxHeight={410}
+          maxHeight={428}
           showNames={flow.showNames}
           onToggleNames={() => patch({ showNames: !flow.showNames })}
         />
+        {/* 방장 진입(Figma N04L "방 관리" 밑줄 글자). 공통 링크 + 관리 비밀번호. */}
+        <button
+          type="button"
+          className="text-link"
+          onClick={() => nav(roomId && hasAdminSession(roomId) ? 'N10' : 'N04M')}
+        >
+          방 관리
+        </button>
         <Field
           label="별명"
           value={flow.nickname}
@@ -127,13 +129,11 @@ export function AdminAuth(props: ScreenProps) {
 
   return (
     <Page>
-      <Head title="방 관리" />
+      <Head title="방 관리" sub="방을 만들 때 설정한 비밀번호를 입력해 주세요." />
       <Body gap={44}>
-        <ScenePreview background={background} characters={scene?.characters} maxHeight={280} />
-        <div className="field" style={{ gap: 18 }}>
-          <p className="text" style={{ textAlign: 'left' }}>
-            방을 만들 때 설정한 비밀번호를 입력해 주세요.
-          </p>
+        {/* Figma N04M은 배경만 보여준다(캐릭터 없음). */}
+        <ScenePreview background={background} maxHeight={260} />
+        <div className="field">
           <Field
             label="관리 비밀번호"
             type="password"
@@ -149,7 +149,7 @@ export function AdminAuth(props: ScreenProps) {
         </div>
       </Body>
       <Foot>
-        <Cta onClick={() => nav('N04')}>취소</Cta>
+        <Cta onClick={() => nav('N04')}>뒤로가기</Cta>
         <Cta disabled={!password || auth.pending} onClick={submit}>
           관리모드로
         </Cta>
@@ -168,7 +168,7 @@ export function CharacterSelect({ nav, flow, patch, toast }: ScreenProps) {
 
   return (
     <Page variant="fixed">
-      <Head title="캐릭터 선택" sub="원하는 캐릭터와 모습을 골라주세요." />
+      <Head title={flow.room?.title ?? '캐릭터 선택'} sub="원하는 캐릭터와 모습을 골라주세요." />
       <div className="char-list">
         {characters.data?.map((character) => (
           <section key={character.id} className="char-group">
@@ -238,10 +238,9 @@ export function DrawFace({ nav, flow, patch, toast }: ScreenProps) {
     }
   }
 
-  const who = flow.nickname.trim()
   return (
     <Page>
-      <Head title="얼굴 그리기" sub={who ? `${flow.pick.characterName} · ${who}` : flow.pick.characterName} />
+      <Head title="자유롭게 그리기" sub="얼굴 밖에도, 몸에도 자유롭게 그려봐요!" />
       <Body gap={16}>
         <FaceBoard
           art={art}
@@ -630,41 +629,6 @@ export function Placement(props: ScreenProps) {
   )
 }
 
-/** 외부 가로 스크롤. value 0..1. */
-function HScroll({ value, onChange }: { value: number; onChange: (value: number) => void }) {
-  const [ref, box] = useElementSize<HTMLDivElement>()
-  const knob = 80
-  const travel = Math.max(1, box.width - knob)
-  const start = useRef<{ x: number; value: number } | null>(null)
-  return (
-    <div className="hscroll" ref={ref}>
-      <div className="hscroll-track" />
-      <button
-        type="button"
-        className="hscroll-knob"
-        aria-label="배경 좌우 이동"
-        style={{ left: value * travel }}
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId)
-          start.current = { x: e.clientX, value }
-        }}
-        onPointerMove={(e) => {
-          if (!start.current) return
-          onChange(clamp(start.current.value + (e.clientX - start.current.x) / travel, 0, 1))
-        }}
-        onPointerUp={() => (start.current = null)}
-        onPointerCancel={() => (start.current = null)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowLeft') onChange(clamp(value - 0.1, 0, 1))
-          if (e.key === 'ArrowRight') onChange(clamp(value + 0.1, 0, 1))
-        }}
-      >
-        <img src={arrowsIcon} alt="" />
-      </button>
-    </div>
-  )
-}
-
 /** N09 배치 완료. */
 export function JoinDone(props: ScreenProps) {
   return <Finished {...props} revisit={false} />
@@ -682,7 +646,7 @@ export function JoinRevisit(props: ScreenProps) {
  */
 function Finished(props: ScreenProps & { revisit: boolean }) {
   const { nav, flow, patch, toast, revisit } = props
-  const { roomId, scene, remaining } = useRoomScene(props)
+  const { roomId, scene, remaining, ratio } = useRoomScene(props)
   const image = useSaveImage(toast)
   const background = sceneBackground(flow, scene)
   if (!flow.room || !background) return <Missing />
@@ -701,10 +665,9 @@ function Finished(props: ScreenProps & { revisit: boolean }) {
 
   return (
     <Page>
-      <Head
-        title={`<${flow.room.title}>`}
-        sub={revisit ? remaining && `종료까지 ${remaining}` : '친구들과 함께 귀여운 이미지를 완성했어요!'}
-      />
+      {/* N09R은 머리말 대신 남은 시간 게이지(Figma 21:1121). */}
+      <Head title={flow.room.title} sub={revisit ? undefined : '친구들과 함께 귀여운 이미지를 완성했어요!'} />
+      {revisit && <RemainingBar label={remaining} ratio={ratio} />}
       <Body gap={24}>
         <ScenePreview
           background={background}

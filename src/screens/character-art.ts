@@ -4,16 +4,32 @@ import type { Artwork, CharacterV2 } from '../lib/relay-draw/api-v2.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
 
 /**
- * 캐릭터 = 포즈 원화(얼굴이 비어 있는 몸) + 사용자가 그린 얼굴.
+ * 캐릭터 = 포즈 원화 + 사용자가 그린 그림(업로드 파트 이름은 서버 그대로 "face").
  *
- * 좌표계는 서버 artwork 기준이다.
- *   - canvas: 포즈 원화 크기(200×200)
- *   - faceRect: 원화 안 얼굴 영역
- *   - faceMask.path: 같은 좌표계의 얼굴 모양 SVG path
- * 얼굴 파일은 faceRect 크기 비율 그대로 잘라서 올리고, 그릴 때 faceRect에 맞춰 faceMask로 오린다.
+ * 좌표계는 서버 artwork 기준이다(canvas 200×200).
+ * 현재 에셋(assetVersion 3)은 얼굴 영역이 없다. 원화 전체가 그리기 영역이고 마스킹하지 않는다.
+ * 예전 에셋이 faceRect(·faceMask)를 주면 그 영역에만 그리고 그 모양으로 오린다.
  */
 
 type Rect = { x: number; y: number; width: number; height: number }
+
+/** 그림이 올라가는 영역(원화 좌표). 얼굴 영역이 없으면 원화 전체. */
+export function drawRect(art: Pick<Artwork, 'faceRect' | 'canvas'>): Rect {
+  return art.faceRect ?? { x: 0, y: 0, width: art.canvas.width, height: art.canvas.height }
+}
+
+/**
+ * 그림을 오릴 모양. 예전 에셋만 해당한다.
+ *   path: faceMask SVG path / ellipse: faceRect 내접 타원 / null: 오리지 않음(현재 에셋)
+ */
+export function drawClip(art: Pick<Artwork, 'faceRect' | 'faceMask'>):
+  | { kind: 'path'; d: string }
+  | { kind: 'ellipse'; rect: Rect }
+  | null {
+  if (art.faceMask?.path) return { kind: 'path', d: art.faceMask.path }
+  if (art.faceRect) return { kind: 'ellipse', rect: art.faceRect }
+  return null
+}
 
 /**
  * 얼굴 그리기 엔진 배치 정보.
@@ -21,8 +37,8 @@ type Rect = { x: number; y: number; width: number; height: number }
  * 엔진은 정사각 캔버스에 MARGIN_RATIO만큼 여백을 둔 "칸"을 정규화 좌표(0..1)로 쓴다.
  * faceRect를 감싸는 정사각을 칸으로 잡고, 실제 그릴 수 있는 곳은 faceRect에 내접한 타원이다.
  */
-export function faceGeometry(art: Pick<Artwork, 'faceRect'>) {
-  const f = art.faceRect
+export function faceGeometry(art: Pick<Artwork, 'faceRect' | 'canvas'>) {
+  const f = drawRect(art)
   const side = Math.max(f.width, f.height)
   const cx = f.x + f.width / 2
   const cy = f.y + f.height / 2
@@ -45,9 +61,21 @@ export function faceGeometry(art: Pick<Artwork, 'faceRect'>) {
   return { box, canvas, faceNorm }
 }
 
-/** faceRect에 내접한 타원을 다각형으로 만든 그리기 칸. 연결점·경계 띠는 없다. */
+/**
+ * 그리기 칸. 얼굴 영역이 있는 예전 에셋은 faceRect 내접 타원, 지금 에셋은 원화 전체 사각형.
+ * 연결점·경계 띠는 없다.
+ */
 export function faceTemplate(art: Artwork): CellTemplate {
   const { faceNorm: n } = faceGeometry(art)
+  if (!art.faceRect) {
+    const outline: Vec[] = [
+      { x: n.x, y: n.y },
+      { x: n.x + n.width, y: n.y },
+      { x: n.x + n.width, y: n.y + n.height },
+      { x: n.x, y: n.y + n.height },
+    ]
+    return { id: `body:${art.id}`, label: '캐릭터', outline, anchors: [], hints: [], showOutline: false }
+  }
   const cx = n.x + n.width / 2
   const cy = n.y + n.height / 2
   const steps = 72
@@ -146,13 +174,15 @@ export async function renderSceneBlob(
     ctx.drawImage(await loadBitmap(assetUrl(art.url)), 0, 0, art.canvas.width, art.canvas.height)
     const faceUrl = faceAssetUrl(c)
     if (faceUrl) {
-      const f = art.faceRect
+      const f = drawRect(art)
+      const clip = drawClip(art)
       ctx.save()
-      if (art.faceMask?.path) {
-        ctx.clip(new Path2D(art.faceMask.path))
-      } else {
+      if (clip?.kind === 'path') {
+        ctx.clip(new Path2D(clip.d))
+      } else if (clip?.kind === 'ellipse') {
+        const r = clip.rect
         ctx.beginPath()
-        ctx.ellipse(f.x + f.width / 2, f.y + f.height / 2, f.width / 2, f.height / 2, 0, 0, Math.PI * 2)
+        ctx.ellipse(r.x + r.width / 2, r.y + r.height / 2, r.width / 2, r.height / 2, 0, 0, Math.PI * 2)
         ctx.clip()
       }
       ctx.drawImage(await loadBitmap(faceUrl), f.x, f.y, f.width, f.height)

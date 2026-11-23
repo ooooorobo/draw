@@ -23,7 +23,13 @@ import {
   type Scene,
 } from './api-client.ts'
 
-export type Artwork = Catalog['characters'][number]['poses'][number] & {
+/**
+ * 포즈 원화. 서버 v0.2.0(assetVersion 3)부터 얼굴 영역(faceRect)·마스크(faceMask)가 없다.
+ * 얼굴만이 아니라 캐릭터 전체 위에 자유롭게 그리고, 마스킹하지 않는다.
+ * 예전 에셋(이전 방의 캐릭터)은 아직 faceRect를 줄 수 있어서 선택 필드로 남긴다.
+ */
+export type Artwork = Omit<Catalog['characters'][number]['poses'][number], 'faceRect'> & {
+  faceRect?: { x: number; y: number; width: number; height: number }
   faceMask?: { url: string; path: string; regionCount: number }
 }
 
@@ -127,6 +133,26 @@ export function listAdminCharacters(
   return request(api, `${room(roomId)}/admin/characters`, {
     headers: { authorization: `Bearer ${adminToken}` },
     signal,
+  })
+}
+
+export type AdminPlacement = { characterId: string; x: number; y: number; scale?: number; rotation?: number }
+
+/**
+ * 방장 배치 저장(PATCH admin/placements). version은 조회한 장면 버전이다.
+ * 바꾼 캐릭터만 보낸다(scale·rotation 생략 시 서버가 기존 값을 유지). 충돌은 409 SCENE_CHANGED.
+ */
+export function saveAdminPlacements(
+  api: RelayDrawClient,
+  roomId: string,
+  version: number,
+  placements: AdminPlacement[],
+  adminToken: string,
+): Promise<{ version: number }> {
+  return request(api, `${room(roomId)}/admin/placements`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ version, placements }),
   })
 }
 

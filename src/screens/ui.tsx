@@ -1,4 +1,6 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import arrowsIcon from '../assets/icon-arrows-lr.svg'
+import clockIcon from '../assets/icon-clock.svg'
 import signCross from '../assets/sign-cross.svg'
 import signGrass from '../assets/sign-grass.svg'
 import signPlank from '../assets/sign-plank.svg'
@@ -154,6 +156,27 @@ export function Stage({
   )
 }
 
+/**
+ * 오류 안내(Figma E01 158:2087 · E03 21:1216). 큰 제목 + 안내 + 바로 아래 나무 X 표지판.
+ */
+export function ErrorNotice({ title, text }: { title: string; text: string }) {
+  return (
+    <>
+      <div className="head" style={{ paddingTop: 134, gap: 16 }}>
+        <h1 className="head-title" style={{ fontSize: 24 }}>
+          {title}
+        </h1>
+        <p className="text">{text}</p>
+      </div>
+      <Body>
+        <div className="notice-sign">
+          <SignX />
+        </div>
+      </Body>
+    </>
+  )
+}
+
 /** E03 나무 X 표지판. Figma 레이어 4장(말뚝·판자·X·풀)을 같은 자리에 겹친다. */
 export function SignX() {
   // 위치/회전은 Figma(90:57, 160×140)의 레이어 박스를 그대로 옮겼다.
@@ -175,12 +198,67 @@ export function SignX() {
   )
 }
 
+/**
+ * 종료까지 남은 시간 게이지(Figma 158:849). ratio는 참여 기간 중 남은 비율 0..1.
+ * 거의 끝나도 글자가 읽히도록 채움은 최소 폭을 둔다.
+ */
+export function RemainingBar({ label, ratio }: { label: string; ratio: number }) {
+  if (!label) return null
+  const fill = Math.max(0.08, Math.min(1, ratio))
+  return (
+    <div className="remain" role="img" aria-label={`종료까지 ${label} 남음`}>
+      <div className="remain-track">
+        <div className="remain-fill" style={{ width: `calc((100% - 5px) * ${fill})` }} />
+        <span className="remain-label">{label} 남음</span>
+      </div>
+      <img className="remain-clock" src={clockIcon} alt="" />
+    </div>
+  )
+}
+
 /** 짧은 안내(링크 복사됨 등). */
 export function Toast({ message }: { message: string | null }) {
   if (!message) return null
   return (
     <div className="toast" role="status">
       {message}
+    </div>
+  )
+}
+
+const clampUnit = (v: number) => Math.min(1, Math.max(0, v))
+
+/** 외부 가로 스크롤. value 0..1. */
+export function HScroll({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const [ref, box] = useElementSize<HTMLDivElement>()
+  const knob = 80
+  const travel = Math.max(1, box.width - knob)
+  const start = useRef<{ x: number; value: number } | null>(null)
+  return (
+    <div className="hscroll" ref={ref}>
+      <div className="hscroll-track" />
+      <button
+        type="button"
+        className="hscroll-knob"
+        aria-label="배경 좌우 이동"
+        style={{ left: value * travel }}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          start.current = { x: e.clientX, value }
+        }}
+        onPointerMove={(e) => {
+          if (!start.current) return
+          onChange(clampUnit(start.current.value + (e.clientX - start.current.x) / travel))
+        }}
+        onPointerUp={() => (start.current = null)}
+        onPointerCancel={() => (start.current = null)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') onChange(clampUnit(value - 0.1))
+          if (e.key === 'ArrowRight') onChange(clampUnit(value + 0.1))
+        }}
+      >
+        <img src={arrowsIcon} alt="" />
+      </button>
     </div>
   )
 }

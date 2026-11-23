@@ -1,6 +1,7 @@
 import { useId, type CSSProperties } from 'react'
 import type { Artwork } from '../lib/relay-draw/api-v2.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
+import { drawClip, drawRect } from './character-art.ts'
 
 /**
  * 포즈 + 얼굴을 한 장으로. SVG라 크기와 무관하게 선명하고, faceMask path로 바로 오릴 수 있다.
@@ -23,8 +24,8 @@ export function Sprite({
 }) {
   const clipId = useId()
   const { width: cw, height: ch } = art.canvas
-  const f = art.faceRect
-  const mask = art.faceMask?.path
+  const f = drawRect(art)
+  const clip = drawClip(art)
   return (
     <svg
       className={className ?? 'sprite'}
@@ -38,13 +39,20 @@ export function Sprite({
       <image href={assetUrl(art.url)} x={0} y={0} width={cw} height={ch} />
       {faceUrl && (
         <>
-          <clipPath id={clipId}>
-            {mask ? (
-              <path d={mask} />
-            ) : (
-              <ellipse cx={f.x + f.width / 2} cy={f.y + f.height / 2} rx={f.width / 2} ry={f.height / 2} />
-            )}
-          </clipPath>
+          {clip && (
+            <clipPath id={clipId}>
+              {clip.kind === 'path' ? (
+                <path d={clip.d} />
+              ) : (
+                <ellipse
+                  cx={clip.rect.x + clip.rect.width / 2}
+                  cy={clip.rect.y + clip.rect.height / 2}
+                  rx={clip.rect.width / 2}
+                  ry={clip.rect.height / 2}
+                />
+              )}
+            </clipPath>
+          )}
           <image
             href={faceUrl}
             x={f.x}
@@ -52,7 +60,7 @@ export function Sprite({
             width={f.width}
             height={f.height}
             preserveAspectRatio="none"
-            clipPath={`url(#${clipId})`}
+            clipPath={clip ? `url(#${clipId})` : undefined}
           />
         </>
       )}

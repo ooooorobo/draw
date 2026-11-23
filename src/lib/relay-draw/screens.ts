@@ -10,7 +10,9 @@ import {
   createRoomWithPassword,
   listAdminCharacters,
   openAdminSession,
+  saveAdminPlacements,
   type AdminCharacter,
+  type AdminPlacement,
   type Artwork,
   type BackgroundUploadV2,
   type BackgroundViewV2,
@@ -48,6 +50,18 @@ export function remainingLabel(room: Pick<RoomV2, 'closesAt' | 'serverNow'>, fet
   if (days > 0) return `${days}일 ${hours}시간`
   if (hours > 0) return `${hours}시간 ${minutes % 60}분`
   return `${minutes % 60}분`
+}
+
+/** 참여 기간(생성~종료) 중 남은 비율 0..1. 남은 시간 게이지(Figma 158:849)에 쓴다. */
+export function remainingRatio(
+  room: Pick<RoomV2, 'createdAt' | 'closesAt' | 'serverNow'>,
+  fetchedAt: number,
+  now = Date.now(),
+): number {
+  const serverNow = Date.parse(room.serverNow) + (now - fetchedAt)
+  const total = Date.parse(room.closesAt) - Date.parse(room.createdAt)
+  if (!Number.isFinite(total) || total <= 0) return 0
+  return Math.min(1, Math.max(0, (Date.parse(room.closesAt) - serverNow) / total))
 }
 
 /** 카탈로그는 앱 수명 동안 바뀌지 않는다고 보고 한 번만 받는다. */
@@ -299,6 +313,11 @@ function adminToken(roomId: string): string {
 /** N10 — 삭제 선택용 목록(PLACED만). 썸네일: bodyImageUrl + faceImage. 실패 → onAdminError */
 export async function loadAdminCharacters(roomId: string, signal?: AbortSignal): Promise<AdminCharacter[]> {
   return (await listAdminCharacters(getApi(), roomId, adminToken(roomId), signal)).characters
+}
+
+/** N10 "변경사항 저장". 옮긴 캐릭터만 보낸다. 409 SCENE_CHANGED면 장면을 다시 받아야 한다. 실패 → onAdminError */
+export async function savePlacements(roomId: string, version: number, placements: AdminPlacement[]) {
+  return saveAdminPlacements(getApi(), roomId, version, placements, adminToken(roomId))
 }
 
 /** N10C "삭제" → N10. OPEN 기간에만 가능. 실패 → onAdminError */

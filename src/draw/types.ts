@@ -55,6 +55,8 @@ export type CellTemplate = {
   anchors: Vec[]
   /** 경계 띠: 이미 채워진 옆 칸의 가장자리 일부. 그리는 사람에게만 보이는 힌트. */
   hints: Stroke[]
+  /** 칸 외곽 점선을 그릴지. 캐릭터 전체 그리기(N06)는 경계가 곧 카드라 끈다. 기본 true. */
+  showOutline?: boolean
 }
 
 /** 칸 크기별 제한 시간(FR-09). */

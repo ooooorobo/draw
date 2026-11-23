@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import eraserIcon from '../assets/icon-eraser.svg'
 import penIcon from '../assets/icon-pen.svg'
+import checkDark from '../assets/icon-check-dark.svg'
+import checkLight from '../assets/icon-check-light.svg'
+import colorWheel from '../assets/color-wheel.png'
 import undoIcon from '../assets/icon-undo.svg'
 import { DrawEngine, type Tool } from '../draw/engine.ts'
 import { bindPointerInput, type PinchSample } from '../draw/pointer.ts'
 import type { Stroke } from '../draw/types.ts'
 import type { Artwork } from '../lib/relay-draw/api-v2.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
-import { faceGeometry, faceTemplate } from './character-art.ts'
+import { drawClip, faceGeometry, faceTemplate } from './character-art.ts'
 import { useElementSize } from './layout.ts'
 
 /** Figma 펜 색상 6개(79:85). */
@@ -20,14 +23,26 @@ const PEN_MAX = 0.07
 const PEN_DEFAULT = 0.34
 
 /**
- * 팔레트 버튼에서 펼치는 추가 색. 기본 6색과 겹치지 않게 밝은·어두운 톤과 피부색 계열을 골랐다.
- * 이 밖의 색은 OS 색 선택기(input type=color)로 고른다.
+ * 60색 팔레트. Figma "60색 선택 / 10열 × 6행"(158:2153). 행은 밝은 → 어두운 명도,
+ * 열은 무채색 · 빨강 · 주황 · 노랑 · 연두 · 초록 · 청록 · 파랑 · 보라 · 분홍.
  */
-const EXTRA_COLORS = [
-  '#ffffff', '#9e9e9e', '#5c5c5c', '#000000', '#f6c8b6', '#e0a47e',
-  '#a86b4c', '#6b3f2a', '#ff5a4f', '#ff9a3c', '#ffe14d', '#b7dc5a',
-  '#2fa66b', '#3fc6c6', '#2f6fd6', '#1f3a8a', '#ff8fc3', '#c03a8a',
+const PALETTE = [
+  ['#ffffff', '#ffe3e3', '#ffe8d4', '#fff3c4', '#e9f4cc', '#d8f3e4', '#dcf3f7', '#dfeafe', '#ede2f8', '#fce0ed'],
+  ['#e5e5e5', '#ffc1c1', '#ffd0a5', '#ffe78d', '#cde79d', '#aee3c4', '#b0e3ec', '#b3cdf9', '#d4b6ef', '#f4b2d0'],
+  ['#bdbdbd', '#f18480', '#f4ae6c', '#f3ce5f', '#9cc76a', '#71c69a', '#73c6d7', '#79a8e7', '#b18cd1', '#e486b5'],
+  ['#8d8d8d', '#df5757', '#df873f', '#d5a82d', '#6d9f43', '#3d9d73', '#389caf', '#437dca', '#8a60b0', '#c65b94'],
+  ['#5b5b5b', '#ae383e', '#ac5d28', '#a27a20', '#486d2f', '#256e51', '#246d7d', '#2d5596', '#60417e', '#913b6a'],
+  ['#222222', '#70272e', '#744023', '#695222', '#304b25', '#1d4938', '#1c4852', '#20365d', '#402e53', '#5f2947'],
 ] as const
+
+/** 밝은 칸에는 어두운 체크, 어두운 칸에는 밝은 체크(Figma 선택 체크 2종). */
+function isLight(hex: string): boolean {
+  const n = parseInt(hex.slice(1), 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  return r * 0.299 + g * 0.587 + b * 0.114 > 150
+}
 
 /** 지우개는 획 단위라 굵기 개념이 없다. 닿는 반경은 엔진이 정한다(ERASER_RADIUS). */
 const ERASER_WIDTH = 0
@@ -50,8 +65,8 @@ function clampView(view: View, width: number, height: number): View {
   }
 }
 
-/** 카드 안에서 포즈 원화가 차지하는 비율. Figma에서 343×370 카드에 310px. */
-const POSE_FILL = 0.9
+/** 카드 폭 대비 포즈 원화 크기. Figma N06(158:1709)은 343×336 카드에 원화 346px(가운데 정렬). */
+const POSE_FILL = 1.01
 
 export type FaceDrawing = {
   engine: DrawEngine
@@ -91,7 +106,7 @@ export function FaceBoard({
   const geo = useMemo(() => faceGeometry(art), [art])
 
   // 원화 → 카드 px 배치
-  const poseSize = Math.min(card.width, card.height) * POSE_FILL
+  const poseSize = card.width * POSE_FILL
   const k = poseSize / art.canvas.width
   const poseLeft = (card.width - poseSize) / 2
   const poseTop = (card.height - (art.canvas.height * k)) / 2
@@ -211,11 +226,9 @@ export function FaceBoard({
     setZoomed(false)
   }
 
-  const f = art.faceRect
-  const ex = poseLeft + (f.x + f.width / 2) * k
-  const ey = poseTop + (f.y + f.height / 2) * k
-  const rx = (f.width / 2) * k
-  const ry = (f.height / 2) * k
+  // 예전 에셋(얼굴 영역 있음)만 얼굴 밖을 어둡게 덮는다. 지금 에셋은 캐릭터 전체에 그린다.
+  const clip = drawClip(art)
+  const f = clip?.kind === 'ellipse' ? clip.rect : (art.faceRect ?? null)
 
   return (
     <div className="draw-card" ref={cardRef}>
@@ -228,13 +241,15 @@ export function FaceBoard({
             draggable={false}
             style={{ left: poseLeft, top: poseTop, width: poseSize, height: art.canvas.height * k }}
           />
-          <svg className="draw-dim" width={card.width} height={card.height} aria-hidden="true">
-            <path
-              fillRule="evenodd"
-              fill="var(--canvas-dim)"
-              d={`M0 0H${card.width}V${card.height}H0Z M${ex - rx} ${ey}a${rx} ${ry} 0 1 0 ${rx * 2} 0a${rx} ${ry} 0 1 0 ${-rx * 2} 0Z`}
-            />
-          </svg>
+          {f && (
+            <svg className="draw-dim" width={card.width} height={card.height} aria-hidden="true">
+              <path
+                fillRule="evenodd"
+                fill="var(--canvas-dim)"
+                d={dimPath(card, poseLeft + (f.x + f.width / 2) * k, poseTop + (f.y + f.height / 2) * k, (f.width / 2) * k, (f.height / 2) * k)}
+              />
+            </svg>
+          )}
         </>
       )}
       <canvas
@@ -250,6 +265,11 @@ export function FaceBoard({
       )}
     </div>
   )
+}
+
+/** 카드 전체에서 얼굴 타원만 뚫은 경로. */
+function dimPath(card: { width: number; height: number }, ex: number, ey: number, rx: number, ry: number) {
+  return `M0 0H${card.width}V${card.height}H0Z M${ex - rx} ${ey}a${rx} ${ry} 0 1 0 ${rx * 2} 0a${rx} ${ry} 0 1 0 ${-rx * 2} 0Z`
 }
 
 function defaultTool(): Tool {
@@ -278,9 +298,6 @@ export function DrawTools({
   const [thickness, setThickness] = useState(PEN_DEFAULT)
   const [optionsOpen, setOptionsOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  /** 팔레트에서 마지막으로 고른 색. 팔레트 버튼 가운데에 남겨 다시 고르기 쉽게 한다. */
-  const [customColor, setCustomColor] = useState<string | null>(null)
-  const optionsRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     engine?.setTool(
@@ -290,34 +307,18 @@ export function DrawTools({
     )
   }, [engine, mode, color, thickness])
 
-  // 팔레트가 열려 있을 때 바깥을 누르면 닫는다.
-  useEffect(() => {
-    if (!paletteOpen) return
-    const onDown = (event: PointerEvent) => {
-      if (!optionsRef.current?.contains(event.target as Node)) setPaletteOpen(false)
-    }
-    document.addEventListener('pointerdown', onDown)
-    return () => document.removeEventListener('pointerdown', onDown)
-  }, [paletteOpen])
-
   /** 색을 고르면 펜으로 돌아간다. */
   const pickColor = (next: string) => {
     setColor(next)
     setMode('draw')
   }
-  const pickCustom = (next: string) => {
-    setCustomColor(next)
-    pickColor(next)
-  }
 
-  const isBase = (PEN_COLORS as readonly string[]).includes(color)
-  /** 기본 6색이 아닌 색을 쓰고 있으면 그 색이 팔레트 버튼에 보인다. */
-  const customShown = customColor ?? (isBase ? null : color)
+  const isBase = (PEN_COLORS as readonly string[]).some((c) => c.toLowerCase() === color.toLowerCase())
 
   return (
     <>
       {optionsOpen && (
-        <div className="pen-options" ref={optionsRef}>
+        <div className="pen-options">
           <div className="swatches" role="radiogroup" aria-label="펜 색상">
             {PEN_COLORS.map((c) => (
               <button
@@ -330,44 +331,18 @@ export function DrawTools({
                 onClick={() => pickColor(c)}
               />
             ))}
+            {/* Figma "60색 팔레트 열기 / 중앙 무지개 그라데이션"(158:1725). */}
             <button
               type="button"
               aria-label="색 더 보기"
               aria-expanded={paletteOpen}
               aria-pressed={mode === 'draw' && !isBase}
-              className={customShown ? 'swatch swatch--custom has-color' : 'swatch swatch--custom'}
-              style={customShown ? ({ '--custom': customShown } as CSSProperties) : undefined}
-              onClick={() => setPaletteOpen((open) => !open)}
-            />
+              className="swatch swatch--wheel"
+              onClick={() => setPaletteOpen(true)}
+            >
+              <img src={colorWheel} alt="" />
+            </button>
           </div>
-          {paletteOpen && (
-            <div className="palette-pop" role="dialog" aria-label="색 고르기">
-              <div className="palette-grid">
-                {EXTRA_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={c}
-                    aria-pressed={mode === 'draw' && color === c}
-                    className="swatch"
-                    style={{ background: c }}
-                    onClick={() => {
-                      pickCustom(c)
-                      setPaletteOpen(false)
-                    }}
-                  />
-                ))}
-              </div>
-              <label className="palette-picker">
-                <input
-                  type="color"
-                  value={/^#[0-9a-f]{6}$/i.test(color) ? color : '#000000'}
-                  onChange={(e) => pickCustom(e.target.value)}
-                />
-                <span>직접 고르기</span>
-              </label>
-            </div>
-          )}
           <div className="width-row">
             <span className="width-dot" style={{ width: 4, height: 4 }} />
             <input
@@ -426,6 +401,37 @@ export function DrawTools({
           <img src={undoIcon} alt="" />
         </button>
       </div>
+      {paletteOpen && (
+        <>
+          <div className="sheet-dim" onClick={() => setPaletteOpen(false)} />
+          <div className="sheet" role="dialog" aria-label="색상 선택">
+            <span className="sheet-handle" aria-hidden="true" />
+            <h2 className="sheet-title">색상 선택</h2>
+            <div className="palette" role="radiogroup" aria-label="60색">
+              {PALETTE.flat().map((c) => {
+                const selected = mode === 'draw' && color.toLowerCase() === c
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    className="palette-cell"
+                    style={{ background: c }}
+                    aria-label={c}
+                    aria-pressed={selected}
+                    onClick={() => {
+                      // 색상 선택 즉시 적용(Figma 시트 이름). 고르면 시트를 닫는다.
+                      pickColor(c)
+                      setPaletteOpen(false)
+                    }}
+                  >
+                    {selected && <img src={isLight(c) ? checkDark : checkLight} alt="" />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }

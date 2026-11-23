@@ -8,7 +8,7 @@ import { roomLink } from '../lib/relay-draw/entry.ts'
 import { assetUrl, createRoom, loadBackgrounds, loadRoom, shareRoom, uploadBackground } from '../lib/relay-draw/screens.ts'
 import { ScenePreview } from './scene.tsx'
 import type { FlowState, ScreenProps } from './types.ts'
-import { Body, Cta, Field, Foot, Head, Page } from './ui.tsx'
+import { Body, Cta, ErrorNotice, Field, Foot, Head, Page } from './ui.tsx'
 
 /** 방 제목 최대 길이. 서버는 80자까지 받지만 디자인 안내 문구가 14자다. */
 const TITLE_MAX = 14
@@ -116,10 +116,11 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
 
   return (
     <Page>
-      <Head title="방 만들기" />
+      {/* Figma: 배경 고르기 단계 "배경을 골라줘!"(17:431), 제목·비밀번호 단계 "방 만들기"(17:314). */}
+      <Head title={step === 'background' ? '배경을 골라줘!' : '방 만들기'} />
       <Body>
         {preview ? (
-          <ScenePreview background={preview} maxHeight={step === 'background' ? 492 : 302} />
+          <ScenePreview background={preview} maxHeight={step === 'background' ? 468 : 272} />
         ) : (
           <div className="stage" />
         )}
@@ -291,9 +292,10 @@ export function RoomCreated({ nav, flow, patch, toast }: ScreenProps) {
 
   return (
     <Page>
-      <Head title="방 생성 완료!" size="xl" sub={<span className="text--lead">{`<${created.title}>`}</span>} />
+      {/* Figma 21:712: 제목 팻말은 "방 만들기" 그대로, 미리보기를 크게. */}
+      <Head title="방 만들기" />
       <Body>
-        <ScenePreview background={preview} maxHeight={486} />
+        <ScenePreview background={preview} maxHeight={480} />
         <ul className="bullets">
           <li>개설 후 일주일 동안 참여 가능</li>
           <li>같은 방 링크에서 비밀번호로 관리할 수 있어요.</li>
@@ -312,18 +314,10 @@ export function RoomCreated({ nav, flow, patch, toast }: ScreenProps) {
 /** E01 / 배경 업로드 실패. */
 export function UploadFailed({ nav, flow, patch }: ScreenProps) {
   const picker = usePhotoPicker({ nav, patch, flow })
-  const photo = flow.pendingPhoto
-  const preview = photo
-    ? { url: '', previewUrl: photo.url, width: photo.width, height: photo.height }
-    : { url: '', previewUrl: heroBg, width: 491, height: 815 }
 
   return (
     <Page>
-      <Head title="사진을 불러오지 못했어요" plain />
-      <Body gap={54}>
-        <ScenePreview background={preview} maxHeight={360} />
-        <p className="text">다른 사진을 선택하거나 다시 시도해 주세요.</p>
-      </Body>
+      <ErrorNotice title="사진을 불러오지 못했어요." text="다른 사진을 선택하거나 다시 시도해 주세요." />
       <Foot>
         <Cta onClick={picker.open}>다시 선택</Cta>
         <Cta

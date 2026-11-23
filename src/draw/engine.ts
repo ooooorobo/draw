@@ -617,10 +617,12 @@ export class DrawEngine {
     ctx.save()
     ctx.strokeStyle = 'rgba(0,0,0,0.25)'
     ctx.lineWidth = 1
-    ctx.setLineDash([4, 4])
-    this.outlinePath(ctx)
-    ctx.stroke()
-    ctx.setLineDash([])
+    if (this.template.showOutline !== false) {
+      ctx.setLineDash([4, 4])
+      this.outlinePath(ctx)
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
 
     const r = Math.max(3, this.size * 0.012)
     for (const anchor of this.template.anchors) {

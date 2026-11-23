@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import switchOff from '../assets/switch-off.svg'
+import switchOn from '../assets/switch-on.svg'
 import type { BackgroundViewV2, CharacterV2 } from '../lib/relay-draw/api-v2.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
 import { backgroundAspect, faceAssetUrl, nameTag, spriteBox } from './character-art.ts'
@@ -136,7 +138,7 @@ export function NameToggle({ on, onToggle }: { on: boolean; onToggle: () => void
       onClick={onToggle}
     >
       이름 보기
-      <span className="name-toggle-track" aria-hidden="true" />
+      <img src={on ? switchOn : switchOff} alt="" />
     </button>
   )
 }

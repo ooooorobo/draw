@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import type { RoomV2, SceneV2 } from './api-v2.ts'
 import { resolveEntry, type Entry } from './entry.ts'
-import { loadScene, remainingLabel } from './screens.ts'
+import { loadScene, remainingLabel, remainingRatio } from './screens.ts'
 
 export type AsyncState<T> =
   | { status: 'loading'; data: T | null; error: null }
@@ -106,6 +106,19 @@ export function useRemaining(room: Pick<RoomV2, 'closesAt' | 'serverNow'> | null
     return () => clearInterval(id)
   }, [])
   return room ? remainingLabel(room, fetchedAt || now, now) : ''
+}
+
+/** 참여 기간 중 남은 비율 0..1(남은 시간 게이지). useRemaining과 같은 주기로 갱신한다. */
+export function useRemainingRatio(
+  room: Pick<RoomV2, 'createdAt' | 'closesAt' | 'serverNow'> | null,
+  fetchedAt: number,
+) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  return room ? remainingRatio(room, fetchedAt || now, now) : 0
 }
 
 /**

@@ -5,12 +5,19 @@
  * 폰트: 디자인은 쿠키런(CookieRunOTF). 웹폰트가 없을 때는 Noto Sans KR로 떨어진다.
  */
 
+/* 쿠키런 무료 폰트(데브시스터즈). Figma는 본문 Regular, CTA·강조 Bold를 쓴다. */
 @font-face {
   font-family: 'CookieRun';
-  font-weight: 400 700;
+  font-weight: 400;
   font-display: swap;
-  /* 쿠키런 무료 폰트(데브시스터즈). Bold 웹폰트가 없어서 700은 브라우저 합성 굵기를 쓴다. */
-  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/CookieRun-Regular.woff') format('woff');
+  src: url('./assets/fonts/CookieRun-Regular.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'CookieRun';
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/CookieRun-Bold.woff') format('woff');
 }
 
 :root {
@@ -33,6 +40,13 @@
   --scroll-track: #ded9bd;
   --canvas-dim: rgba(51, 51, 51, 0.3);
   --sign-ink: #514030;
+  --sheet-bg: #fffbe3;
+  --sheet-handle: #bdb8a3;
+  --manage-sheet-h: 288px;
+  --remain-line: #634d3f;
+  --remain-bg: #fffaf1;
+  --remain-fill: #e79683;
+  --remain-ink: #681400;
 
   --page-x: 16px;
 }
@@ -115,9 +129,9 @@ button:disabled {
   height: 100dvh;
 }
 
-/* N07: 제목 없이 배치 뷰포트가 위에서 16px부터 시작한다. */
-.page--tight {
-  padding-top: 16px;
+/* N07: 제목 없이 배치 뷰포트가 바로 시작한다(Figma 21:1090·79:49, 위에서 56px). */
+.page--tight .stage {
+  align-items: flex-start;
 }
 
 /* ---------- 머리말 ---------- */
@@ -146,14 +160,13 @@ button:disabled {
   min-width: 224px;
   max-width: 100%;
   height: 48px;
-  margin-top: 8px;
   padding: 2px 30px 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: url('./assets/title-sign.svg') center / 100% 100% no-repeat;
   color: var(--sign-ink);
-  font-weight: 700;
+  font-weight: 400;
   line-height: 24px;
 }
 
@@ -205,6 +218,24 @@ button:disabled {
   flex-direction: column;
   gap: 20px;
   padding-top: 20px;
+}
+
+/* 남은 시간 게이지는 제목 팻말 아래 16px(Figma N04·N09R). */
+.head + .remain {
+  margin-top: 16px;
+}
+
+/* 밑줄 글자 버튼(Figma N04L "방 관리"). */
+.text-link {
+  align-self: center;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--ink-strong);
+  font-size: 14px;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* 그림 미리보기 자리. 실제 크기는 FitBox가 계산한다. */
@@ -272,7 +303,7 @@ button:disabled {
   display: flex;
   gap: 12px;
   margin: 0 calc(var(--page-x) * -1);
-  padding: 24px var(--page-x) max(40px, env(safe-area-inset-bottom));
+  padding: 16px var(--page-x) max(40px, env(safe-area-inset-bottom));
   background: var(--bg);
 }
 
@@ -409,62 +440,97 @@ button:disabled {
   bottom: 100%;
   transform: translate(-50%, -2px);
   max-width: 200%;
-  padding: 1px 7px;
+  height: 22px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  /* Figma "공통 / 닉네임 배지"(112:56) */
   border: 1px solid var(--ink-strong);
-  border-radius: 999px;
-  background: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.4;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink-strong);
+  font-size: 12px;
+  line-height: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* "이름 보기" 스위치(N04·N09·N11). 그림 오른쪽 위. Figma: 흰 알약 + 오른쪽 토글. */
+/* "이름 보기" 스위치. Figma "공통 / 이름 보기 / ON·OFF"(112:62). 그림 오른쪽 위. */
 .name-toggle {
   position: absolute;
   top: 10px;
   right: 10px;
   z-index: 2;
+  height: 32px;
+  padding: 0 9px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px 4px 10px;
   border: 1px solid var(--ink-strong);
-  border-radius: 999px;
-  background: #fff;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink-strong);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 16px;
 }
 
-.name-toggle-track {
+.name-toggle img {
+  display: block;
+  width: 26px;
+  height: 16px;
+}
+
+/*
+ * 종료까지 남은 시간 게이지(Figma 158:849). 7일 중 남은 비율만큼 코랄색이 찬다.
+ * 시계(30) 오른쪽으로 게이지(높이 26)가 이어진다.
+ */
+.remain {
   position: relative;
-  width: 24px;
-  height: 14px;
-  border-radius: 7px;
-  background: var(--placeholder);
-  transition: background 120ms ease-out;
+  align-self: center;
+  width: 311px;
+  max-width: 100%;
+  height: 30px;
 }
 
-.name-toggle-track::after {
-  content: '';
+.remain-track {
   position: absolute;
   top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 120ms ease-out;
+  left: 20px;
+  right: 2px;
+  height: 26px;
+  border: 1.5px solid var(--remain-line);
+  border-radius: 0 20px 20px 0;
+  background: var(--remain-bg);
+  overflow: hidden;
 }
 
-.name-toggle[aria-checked='true'] .name-toggle-track {
-  background: var(--ink-strong);
+.remain-fill {
+  position: absolute;
+  top: 2.5px;
+  left: 2.5px;
+  height: 18px;
+  border-radius: 4px 28px 28px 4px;
+  background: var(--remain-fill);
 }
 
-.name-toggle[aria-checked='true'] .name-toggle-track::after {
-  transform: translateX(10px);
+.remain-label {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--remain-ink);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.remain-clock {
+  position: absolute;
+  top: 0;
+  left: 5px;
+  width: 30px;
+  height: 30px;
 }
 
 .sprite-mark {
@@ -623,7 +689,7 @@ button:disabled {
   position: relative;
   flex: 1;
   min-height: 0;
-  max-height: 370px;
+  max-height: 336px;
   border: 2px solid var(--ink-strong);
   border-radius: 8px;
   background: #fff;
@@ -689,14 +755,15 @@ button:disabled {
   background: #fff;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  align-items: center;
+  gap: 16px;
 }
 
-/* 기본 6색 + 팔레트 버튼. 좁은 화면에서도 한 줄 안에 들어가게 간격을 나눠 쓴다. */
+/* 기본 6색 + 팔레트 버튼(Figma 간격 10). 좁은 화면에서는 간격이 줄어든다. */
 .swatches {
   display: flex;
-  justify-content: space-between;
-  gap: 6px;
+  justify-content: center;
+  gap: clamp(4px, 2.6vw, 10px);
   min-width: 0;
 }
 
@@ -715,72 +782,92 @@ button:disabled {
     0 0 0 4px var(--ink-strong);
 }
 
-/* 팔레트 버튼. 고른 추가 색이 없으면 무지개, 있으면 그 색 + 무지개 테두리. */
-.swatch--custom {
-  background: conic-gradient(#ff5a4f, #ffe14d, #6fd36f, #3fc6c6, #2f6fd6, #c03a8a, #ff5a4f);
-}
-
-.swatch--custom.has-color {
-  background:
-    radial-gradient(circle, var(--custom) 0 9px, transparent 10px),
-    conic-gradient(#ff5a4f, #ffe14d, #6fd36f, #3fc6c6, #2f6fd6, #c03a8a, #ff5a4f);
-}
-
-/* 추가 색 팝오버. 펜 옵션 바로 위에 뜬다. */
-.palette-pop {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 8px);
-  z-index: 10;
-  padding: 12px;
+/* 60색 팔레트 열기 버튼(Figma 158:1725): 흰 원 + 가운데 무지개 원. */
+.swatch--wheel {
+  position: relative;
   border: 1px solid var(--ink-strong);
-  border-radius: 16px;
   background: #fff;
-  box-shadow: 0 3px 0 #000;
+}
+
+.swatch--wheel img {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+}
+
+/* 60색 선택 시트(Figma 158:2153). 화면 아래에서 올라오고 뒤는 20% 어둡게. */
+.sheet-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.sheet {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  z-index: 21;
+  width: min(100%, 430px);
+  transform: translateX(-50%);
+  padding: 38px 19px calc(26px + env(safe-area-inset-bottom));
+  border: 1.5px solid var(--ink-strong);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  background: var(--sheet-bg);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.palette-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 26px);
-  justify-content: space-between;
-  row-gap: 10px;
-  /* 선택 테두리 여유. */
-  padding: 4px;
-}
-
-/* 흰색도 고를 수 있어서 밝은 색은 테두리가 있어야 보인다. */
-.palette-grid .swatch {
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
-}
-
-.palette-grid .swatch[aria-pressed='true'] {
-  box-shadow:
-    0 0 0 2px #fff,
-    0 0 0 4px var(--ink-strong);
-}
-
-.palette-picker {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  cursor: pointer;
+  gap: 24px;
 }
 
-.palette-picker input {
-  width: 32px;
-  height: 26px;
+.sheet-handle {
+  position: absolute;
+  top: 8.5px;
+  left: 50%;
+  width: 39px;
+  height: 4px;
+  margin-left: -19.5px;
+  border-radius: 2px;
+  background: var(--sheet-handle);
+}
+
+.sheet-title {
+  margin: 0;
+  color: var(--ink-strong);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 24px;
+}
+
+.palette {
+  display: grid;
+  grid-template-columns: repeat(10, 28px);
+  gap: 6px;
+}
+
+.palette-cell {
+  position: relative;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid var(--tile-line);
-  border-radius: 6px;
-  background: none;
+  border: 1px solid rgba(51, 51, 51, 0.2);
+  border-radius: 7px;
+}
+
+.palette-cell img {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
 }
 
 .width-row {
+  width: 258px;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1042,7 +1129,6 @@ button:disabled {
 .roster-bar {
   position: relative;
   height: 3px;
-  margin-top: -12px;
   border-radius: 1.5px;
   background: var(--scroll-track);
 }
@@ -1056,6 +1142,13 @@ button:disabled {
 }
 
 /* ---------- E03 표지판 ---------- */
+
+/* 오류 안내의 표지판 자리. 안내 문구 바로 아래(Figma E01·E03). */
+.notice-sign {
+  display: flex;
+  justify-content: center;
+  padding-top: 32px;
+}
 
 .sign {
   position: relative;
@@ -1092,4 +1185,104 @@ button:disabled {
   white-space: nowrap;
   pointer-events: none;
   z-index: 10;
+}
+
+/* ---------- N10 방장 관리(Figma 158:2299) ---------- */
+
+/* 그림이 화면 위를 꽉 채우고, 시트가 그 아래쪽을 16px 덮는다. */
+.page--manage {
+  height: 100dvh;
+  padding: 0;
+  overflow: hidden;
+}
+
+.manage-scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--manage-sheet-h) - 16px);
+}
+
+.manage-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.manage-hit {
+  position: absolute;
+  cursor: grab;
+}
+
+.manage-frame {
+  position: absolute;
+  border: 1px dashed var(--ink-strong);
+  pointer-events: none;
+}
+
+.manage-delete {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.manage-delete img {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+/* 스위치는 시트 바로 위 오른쪽(Figma: 시트 위 8px). */
+.manage-scene .name-toggle {
+  top: auto;
+  bottom: 24px;
+  right: 16px;
+}
+
+.manage-hscroll {
+  position: absolute;
+  left: 16px;
+  bottom: 24px;
+  width: 160px;
+}
+
+.manage-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  height: var(--manage-sheet-h);
+  padding: 20px var(--page-x) max(48px, env(safe-area-inset-bottom));
+  border-radius: 16px 16px 0 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.manage-title {
+  margin: 0;
+  color: var(--ink-strong);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 24px;
+  text-align: center;
+}
+
+.manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.manage-cta {
+  display: flex;
+  gap: 12px;
 }
