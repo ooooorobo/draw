@@ -69,6 +69,29 @@ body {
   color: var(--ink);
   font: 14px/1.5 var(--font);
   -webkit-font-smoothing: antialiased;
+  /*
+   * 그림판·배치 화면에서 끌 때 뜨는 브라우저 기본 효과를 끈다.
+   *   user-select: 글자·이미지가 파랗게 선택되는 것
+   *   touch-callout: iOS에서 길게 누르면 뜨는 저장·공유 메뉴
+   *   tap-highlight: 누를 때 회색 사각형
+   * 입력칸은 아래에서 다시 켠다.
+   */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 이미지를 끌면 반투명 복사본이 따라오는 것(드래그 고스트)을 막는다. */
+img,
+svg {
+  -webkit-user-drag: none;
 }
 
 button,
