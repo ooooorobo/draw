@@ -5,7 +5,7 @@ import { ADMIN_PASSWORD_MIN } from '../lib/relay-draw/api-v2.ts'
 import { onCreateRoomError, onUploadError } from '../lib/relay-draw/errors.ts'
 import { useAction, useAsync } from '../lib/relay-draw/hooks.ts'
 import { roomLink } from '../lib/relay-draw/entry.ts'
-import { assetUrl, createRoom, loadBackgrounds, shareRoom, uploadBackground } from '../lib/relay-draw/screens.ts'
+import { assetUrl, createRoom, loadBackgrounds, loadRoom, shareRoom, uploadBackground } from '../lib/relay-draw/screens.ts'
 import { ScenePreview } from './scene.tsx'
 import type { FlowState, ScreenProps } from './types.ts'
 import { Body, Cta, Field, Foot, Head, Page } from './ui.tsx'
@@ -252,10 +252,14 @@ export function BackgroundConfirm({ nav, flow, patch, toast }: ScreenProps) {
   )
 }
 
-/** N03 / 방 생성 완료. 링크 하나로 참여와 관리(비밀번호)를 같이 한다. */
-export function RoomCreated({ flow, toast }: ScreenProps) {
+/**
+ * N03 / 방 생성 완료. 링크 하나로 참여와 관리(비밀번호)를 같이 한다.
+ * CTA(Figma 21:712): 그림 그리러가기 → 방장도 참여자로 N04 / 링크 공유.
+ */
+export function RoomCreated({ nav, flow, patch, toast }: ScreenProps) {
   const created = flow.created
   const preview = previewOf(flow.background)
+  const [entering, setEntering] = useState(false)
   if (!created || !preview) return <Missing />
 
   const link = roomLink(created.roomId, created.roomUrl)
@@ -265,6 +269,23 @@ export function RoomCreated({ flow, toast }: ScreenProps) {
       if (result === 'copied') toast('링크를 복사했어요.')
     } catch {
       toast('링크를 복사하지 못했어요.')
+    }
+  }
+
+  const goDraw = async () => {
+    if (entering) return
+    setEntering(true)
+    try {
+      const room = await loadRoom(created.roomId)
+      // 주소를 방 링크로 바꿔 둔다. 새로고침해도 이 방 N04로 돌아온다.
+      const url = new URL(link, window.location.href)
+      if (url.origin === window.location.origin) window.history.pushState(null, '', url)
+      patch({ room })
+      nav('N04')
+    } catch {
+      toast('방 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+    } finally {
+      setEntering(false)
     }
   }
 
@@ -279,7 +300,9 @@ export function RoomCreated({ flow, toast }: ScreenProps) {
         </ul>
       </Body>
       <Foot>
-        <Cta onClick={() => share('copy')}>링크 복사</Cta>
+        <Cta disabled={entering} onClick={goDraw}>
+          그림 그리러가기
+        </Cta>
         <Cta onClick={() => share('share')}>링크 공유</Cta>
       </Foot>
     </Page>
