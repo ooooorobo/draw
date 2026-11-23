@@ -94,6 +94,7 @@ export function Field({
   error,
   autoFocus,
   onEnter,
+  inputMode,
 }: {
   label: string
   value: string
@@ -105,6 +106,8 @@ export function Field({
   error?: string | null
   autoFocus?: boolean
   onEnter?: () => void
+  /** 모바일 키보드 종류. 'numeric'이면 숫자 키패드. */
+  inputMode?: 'text' | 'numeric'
 }) {
   return (
     <label className="field">
@@ -117,6 +120,8 @@ export function Field({
         maxLength={maxLength}
         aria-invalid={invalid || Boolean(error)}
         autoFocus={autoFocus}
+        inputMode={inputMode}
+        pattern={inputMode === 'numeric' ? '[0-9]*' : undefined}
         autoComplete={type === 'password' ? 'off' : undefined}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
