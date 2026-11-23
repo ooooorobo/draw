@@ -10,8 +10,8 @@ import { ScenePreview } from './scene.tsx'
 import type { FlowState, ScreenProps } from './types.ts'
 import { Body, Cta, ErrorNotice, Field, Foot, Head, Page } from './ui.tsx'
 
-/** 방 제목 최대 길이. 서버는 80자까지 받지만 디자인 안내 문구가 14자다. */
-const TITLE_MAX = 14
+/** 방 제목 최대 길이. 서버는 80자까지 받지만 제목 팻말에 들어가게 8자로 묶는다. */
+const TITLE_MAX = 8
 
 /** N01 / 방장 ① — 시작. */
 export function Start({ nav }: ScreenProps) {
@@ -171,7 +171,8 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
               value={flow.title}
               placeholder={`방 제목 최대 ${TITLE_MAX}자까지 입력`}
               maxLength={TITLE_MAX}
-              onChange={(v) => patch({ title: v })}
+              // 한글 조합 중에는 maxLength를 넘겨 들어오는 브라우저가 있어 한 번 더 자른다.
+              onChange={(v) => patch({ title: v.slice(0, TITLE_MAX) })}
             />
             <Field
               label="방장 관리 비밀번호"

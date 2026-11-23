@@ -212,6 +212,9 @@ export function CharacterSelect({ nav, flow, patch, toast }: ScreenProps) {
         ))}
       </div>
       <Foot>
+        <Cta className="cta cta--back" onClick={() => nav('N04')}>
+          뒤로가기
+        </Cta>
         <Cta disabled={!flow.pick} onClick={() => nav('N06')}>
           얼굴 그리기
         </Cta>
@@ -258,6 +261,10 @@ export function DrawFace({ nav, flow, patch, toast }: ScreenProps) {
         <DrawTools engine={engine} onStrokeCount={setStrokeCount} />
       </Body>
       <Foot>
+        {/* 캐릭터 다시 고르기. 지금 그리던 그림은 저장하지 않는다(완료 전이라 서버에도 없다). */}
+        <Cta className="cta cta--back" disabled={busy} onClick={() => nav('N05')}>
+          뒤로가기
+        </Cta>
         <Cta disabled={strokeCount === 0 || busy} onClick={finish}>
           전체모습 보기
         </Cta>

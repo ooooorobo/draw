@@ -388,6 +388,12 @@ button:disabled {
     box-shadow 80ms ease-out;
 }
 
+/* 좁은 "뒤로가기"(N05·N06 디자인 피드백). 옆 버튼이 남은 폭을 쓴다. */
+.cta--back {
+  flex: none;
+  width: 101px;
+}
+
 .cta:active:not(:disabled) {
   transform: translateY(4px);
   box-shadow: 0 1px 0 #000;
