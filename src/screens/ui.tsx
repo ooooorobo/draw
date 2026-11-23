@@ -70,8 +70,15 @@ export function Body({ children, gap }: { children: ReactNode; gap?: number }) {
 }
 
 /** stack: 첫 버튼은 한 줄을 다 쓰고 나머지는 아래 줄에 나란히(Figma N09 버튼 3개). */
-export function Foot({ children, stack }: { children: ReactNode; stack?: boolean }) {
-  return <div className={stack ? 'foot foot--stack' : 'foot'}>{children}</div>
+/** below: 버튼 줄 아래 한 줄(N04 "방장 관리 페이지" 링크). */
+export function Foot({ children, stack, below }: { children: ReactNode; stack?: boolean; below?: ReactNode }) {
+  const cls = ['foot', stack && 'foot--stack', below !== undefined && 'foot--below'].filter(Boolean).join(' ')
+  return (
+    <div className={cls}>
+      {children}
+      {below !== undefined && <div className="foot-below">{below}</div>}
+    </div>
+  )
 }
 
 /** 공통 / 입체 CTA. */

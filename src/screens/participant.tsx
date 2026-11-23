@@ -79,14 +79,6 @@ export function JoinStart(props: ScreenProps) {
           showNames={flow.showNames}
           onToggleNames={() => patch({ showNames: !flow.showNames })}
         />
-        {/* 방장 진입(Figma N04L "방 관리" 밑줄 글자). 공통 링크 + 관리 비밀번호. */}
-        <button
-          type="button"
-          className="text-link"
-          onClick={() => nav(roomId && hasAdminSession(roomId) ? 'N10' : 'N04M')}
-        >
-          방 관리
-        </button>
         <Field
           label="별명"
           value={flow.nickname}
@@ -96,7 +88,18 @@ export function JoinStart(props: ScreenProps) {
           onEnter={() => nav('N05')}
         />
       </Body>
-      <Foot>
+      <Foot
+        below={
+          // 방장 진입: CTA 아래 밑줄 글자(디자인 피드백). 공통 링크 + 관리 비밀번호.
+          <button
+            type="button"
+            className="text-link"
+            onClick={() => nav(roomId && hasAdminSession(roomId) ? 'N10' : 'N04M')}
+          >
+            방장 관리 페이지
+          </button>
+        }
+      >
         <Cta onClick={() => nav('N05')}>캐릭터 고르기</Cta>
       </Foot>
     </Page>
