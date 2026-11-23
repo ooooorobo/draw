@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import heroBg from '../assets/bg-meadow.png'
 import cameraIcon from '../assets/icon-camera.svg'
-import { ADMIN_PIN_LENGTH, toAdminPin } from '../lib/relay-draw/api-v2.ts'
+import { ADMIN_PASSWORD_MAX, ADMIN_PASSWORD_MIN } from '../lib/relay-draw/api-v2.ts'
 import { onCreateRoomError, onUploadError } from '../lib/relay-draw/errors.ts'
 import { useAction, useAsync } from '../lib/relay-draw/hooks.ts'
 import { roomLink } from '../lib/relay-draw/entry.ts'
@@ -95,7 +95,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
 
   const uploaded = flow.background?.choice.type === 'upload' ? flow.background : null
   const title = flow.title.trim()
-  const ready = title.length > 0 && password.length === ADMIN_PIN_LENGTH && !!flow.background
+  const ready = title.length > 0 && password.length >= ADMIN_PASSWORD_MIN && !!flow.background
 
   const submit = async () => {
     if (!ready || !flow.background) return
@@ -178,11 +178,10 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
               label="방장 관리 비밀번호"
               type="password"
               value={password}
-              placeholder={`숫자 ${ADMIN_PIN_LENGTH}자리 입력`}
-              maxLength={ADMIN_PIN_LENGTH}
-              inputMode="numeric"
+              placeholder={`비밀번호 ${ADMIN_PASSWORD_MIN}자리 이상 입력`}
+              maxLength={ADMIN_PASSWORD_MAX}
               error={error}
-              onChange={(v) => setPassword(toAdminPin(v))}
+              onChange={setPassword}
               onEnter={submit}
             />
           </>

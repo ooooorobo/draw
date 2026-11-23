@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { DrawEngine } from '../draw/engine.ts'
 import type { Artwork, CharacterV2, SceneV2 } from '../lib/relay-draw/api-v2.ts'
-import { ADMIN_PIN_LENGTH, NICKNAME_MAX, toAdminPin } from '../lib/relay-draw/api-v2.ts'
+import { ADMIN_PASSWORD_MAX, ADMIN_PASSWORD_MIN, NICKNAME_MAX } from '../lib/relay-draw/api-v2.ts'
 import {
   onAdminAuthError,
   onCreateCharacterError,
@@ -118,7 +118,7 @@ export function AdminAuth(props: ScreenProps) {
   if (!roomId || !background) return <Missing />
 
   const submit = async () => {
-    if (password.length !== ADMIN_PIN_LENGTH) return
+    if (password.length < ADMIN_PASSWORD_MIN) return
     setError(null)
     try {
       await auth.run(roomId, password)
@@ -142,13 +142,12 @@ export function AdminAuth(props: ScreenProps) {
             label="관리 비밀번호"
             type="password"
             value={password}
-            placeholder={`숫자 ${ADMIN_PIN_LENGTH}자리`}
-            maxLength={ADMIN_PIN_LENGTH}
-            inputMode="numeric"
+            placeholder={`${ADMIN_PASSWORD_MIN}자리 이상`}
+            maxLength={ADMIN_PASSWORD_MAX}
             autoFocus
             error={error}
             onChange={(v) => {
-              setPassword(toAdminPin(v))
+              setPassword(v)
               setError(null)
             }}
             onEnter={submit}
@@ -157,7 +156,7 @@ export function AdminAuth(props: ScreenProps) {
       </Body>
       <Foot>
         <Cta onClick={() => nav('N04')}>뒤로가기</Cta>
-        <Cta disabled={password.length !== ADMIN_PIN_LENGTH || auth.pending} onClick={submit}>
+        <Cta disabled={password.length < ADMIN_PASSWORD_MIN || auth.pending} onClick={submit}>
           관리모드로
         </Cta>
       </Foot>

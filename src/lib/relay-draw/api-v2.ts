@@ -88,16 +88,10 @@ export type AdminCharacter = CharacterV2 & {
   faceImage: Pick<Asset, 'id' | 'kind' | 'mime' | 'size' | 'url'> | null
 }
 
-/**
- * 방 관리 비밀번호는 숫자 4자리(PIN). 서버는 4~64자를 받으므로 그 안이다.
- * 화면에서 숫자만, 정확히 4자리로 입력받는다.
- */
-export const ADMIN_PIN_LENGTH = 4
+/** 방 관리 비밀번호 길이. 서버 제약(adminPassword 4~64자)과 같다. 문자 종류는 제한하지 않는다. */
+export const ADMIN_PASSWORD_MIN = 4
+export const ADMIN_PASSWORD_MAX = 64
 
-/** 입력값에서 숫자만 남기고 4자리로 자른다. */
-export function toAdminPin(value: string): string {
-  return value.replace(/\D/g, '').slice(0, ADMIN_PIN_LENGTH)
-}
 export const TITLE_MAX = 80
 export const NICKNAME_MAX = 10
 
