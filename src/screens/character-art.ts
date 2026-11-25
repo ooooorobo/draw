@@ -1,6 +1,7 @@
 import { MARGIN_RATIO } from '../draw/engine.ts'
 import type { CellTemplate, Vec } from '../draw/types.ts'
 import type { Artwork, CharacterV2 } from '../lib/relay-draw/api-v2.ts'
+import { loadImageBlob } from '../lib/relay-draw/images.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
 
 /**
@@ -145,9 +146,7 @@ export function labelAnchor(box: { left: number; top: number; width: number; hei
 }
 
 async function loadBitmap(url: string): Promise<ImageBitmap> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`이미지를 불러오지 못했어요 (${res.status})`)
-  return createImageBitmap(await res.blob())
+  return createImageBitmap(await loadImageBlob(url))
 }
 
 /**

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import downloadIcon from '../assets/icon-download.svg'
 import type { DrawEngine } from '../draw/engine.ts'
 import type { Artwork, CharacterV2, SceneV2 } from '../lib/relay-draw/api-v2.ts'
 import { ADMIN_PASSWORD_MAX, ADMIN_PASSWORD_MIN, NICKNAME_MAX } from '../lib/relay-draw/api-v2.ts'
 import {
+  errorMessage,
+  isThrottled,
   onAdminAuthError,
   onCreateCharacterError,
   onLoadError,
@@ -32,7 +35,7 @@ import { TransformControls } from './transform-controls.tsx'
 import { clamp, fingerPair, MAX_SCALE, MIN_SCALE, normalizeRotation, pinchTransform, scaleFromCorner } from './transform.ts'
 import type { FlowState, PlacementDraft, ScreenProps } from './types.ts'
 import { containSize, useElementSize } from './layout.ts'
-import { Body, Cta, Field, Foot, Head, HScroll, Page, RemainingBar } from './ui.tsx'
+import { AssetImg, Body, Cta, Field, Foot, Head, HScroll, Page, RemainingBar } from './ui.tsx'
 
 /** 방이 있어야 하는 화면 공통. scene 폴링 + 오류 시 화면 전이. */
 function useRoomScene({ flow, nav, toast }: Pick<ScreenProps, 'flow' | 'nav' | 'toast'>) {
@@ -58,8 +61,9 @@ function sceneBackground(flow: FlowState, scene: SceneV2 | null) {
 
 /** N04 / N04L — 최초 참여. 배경이 가로면 미리보기가 가로로 그려진다(N04L). */
 export function JoinStart(props: ScreenProps) {
-  const { nav, flow, patch } = props
+  const { nav, flow, patch, toast } = props
   const { roomId, scene, remaining, ratio } = useRoomScene(props)
+  const image = useSaveImage(toast)
   const background = sceneBackground(flow, scene)
 
   useEffect(() => {
@@ -71,7 +75,7 @@ export function JoinStart(props: ScreenProps) {
 
   return (
     <Page>
-      <Head title={flow.room.title} />
+      <Head title={flow.room.title} home />
       <RemainingBar label={remaining} ratio={ratio} />
       <Body gap={16}>
         <ScenePreview
@@ -80,7 +84,19 @@ export function JoinStart(props: ScreenProps) {
           maxHeight={428}
           showNames={flow.showNames}
           onToggleNames={() => patch({ showNames: !flow.showNames })}
-        />
+        >
+          {() => (
+            <button
+              type="button"
+              className="scene-save"
+              disabled={!scene || image.saving}
+              onClick={() => image.save(scene, flow.room?.title ?? '')}
+            >
+              이미지 저장
+              <img src={downloadIcon} alt="" width={18} height={18} />
+            </button>
+          )}
+        </ScenePreview>
         <Field
           label="별명"
           value={flow.nickname}
@@ -114,13 +130,13 @@ export function AdminAuth(props: ScreenProps) {
   const { roomId, scene } = useRoomScene(props)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const auth = useAction(authenticateAdmin)
+  const auth = useAction(authenticateAdmin, { cooldownKey: 'admin-auth' })
   const background = sceneBackground(flow, scene)
 
   if (!roomId || !background) return <Missing />
 
   const submit = async () => {
-    if (password.length < ADMIN_PASSWORD_MIN) return
+    if (password.length < ADMIN_PASSWORD_MIN || auth.blocked) return
     setError(null)
     try {
       await auth.run(roomId, password)
@@ -136,7 +152,7 @@ export function AdminAuth(props: ScreenProps) {
 
   return (
     <Page>
-      <Head title="방 관리" sub="방을 만들 때 설정한 비밀번호를 입력해 주세요." />
+      <Head title="방 관리" sub="방을 만들 때 설정한 비밀번호를 입력해 주세요." home />
       <Body gap={44}>
         {/* Figma N04M은 배경만 보여준다(캐릭터 없음). */}
         <ScenePreview background={background} maxHeight={260} />
@@ -159,7 +175,7 @@ export function AdminAuth(props: ScreenProps) {
       </Body>
       <Foot>
         <Cta onClick={() => nav('N04')}>뒤로가기</Cta>
-        <Cta disabled={password.length < ADMIN_PASSWORD_MIN || auth.pending} onClick={submit}>
+        <Cta disabled={password.length < ADMIN_PASSWORD_MIN || auth.blocked} onClick={submit}>
           관리모드로
         </Cta>
       </Foot>
@@ -177,7 +193,7 @@ export function CharacterSelect({ nav, flow, patch, toast }: ScreenProps) {
 
   return (
     <Page variant="fixed">
-      <Head title={flow.room?.title ?? '캐릭터 선택'} sub="원하는 캐릭터와 모습을 골라주세요." />
+      <Head title={flow.room?.title ?? '캐릭터 선택'} sub="원하는 캐릭터와 모습을 골라주세요." home />
       <div className="char-list">
         {characters.data?.map((character) => (
           <section key={character.id} className="char-group">
@@ -206,7 +222,7 @@ export function CharacterSelect({ nav, flow, patch, toast }: ScreenProps) {
                       }
                     }}
                   >
-                    <img src={assetUrl(pose.url)} alt="" loading="lazy" />
+                    <AssetImg src={assetUrl(pose.url)} alt="" />
                   </button>
                 )
               })}
@@ -254,7 +270,7 @@ export function DrawFace({ nav, flow, patch, toast }: ScreenProps) {
 
   return (
     <Page>
-      <Head title="자유롭게 그리기" sub="얼굴 밖에도, 몸에도 자유롭게 그려봐요!" />
+      <Head title="자유롭게 그리기" sub="얼굴 밖에도, 몸에도 자유롭게 그려봐요!" home />
       <Body gap={16}>
         <FaceBoard
           art={art}
@@ -279,7 +295,7 @@ export function DrawFace({ nav, flow, patch, toast }: ScreenProps) {
 
 /** N06C — 전체모습 확인. 확정하면 서버에 캐릭터(DRAFT)를 만든다. */
 export function ConfirmLook({ nav, flow, toast }: ScreenProps) {
-  const confirm = useAction(confirmCharacter)
+  const confirm = useAction(confirmCharacter, { cooldownKey: 'create-character' })
   const [error, setError] = useState<string | null>(null)
   const [figureRef, box] = useElementSize<HTMLDivElement>()
   if (!flow.room || !flow.pick || !flow.artwork || !flow.face) return <Missing onBack={() => nav('N06')} />
@@ -300,7 +316,7 @@ export function ConfirmLook({ nav, flow, toast }: ScreenProps) {
 
   return (
     <Page>
-      <Head title="전체모습 확인" />
+      <Head title="전체모습 확인" home />
       <Body gap={0}>
         <div className="stage" ref={figureRef}>
           {box.height > 0 && (
@@ -322,7 +338,7 @@ export function ConfirmLook({ nav, flow, toast }: ScreenProps) {
         <Cta onClick={() => nav('N06')} disabled={confirm.pending}>
           다시 그리기
         </Cta>
-        <Cta onClick={submit} disabled={confirm.pending}>
+        <Cta onClick={submit} disabled={confirm.blocked}>
           확정
         </Cta>
       </Foot>
@@ -331,10 +347,12 @@ export function ConfirmLook({ nav, flow, toast }: ScreenProps) {
 }
 
 /** 제출(N07 "완료", E02 "다시 등록") 공통. */
-function useSubmit({ nav, flow, toast }: Pick<ScreenProps, 'nav' | 'flow' | 'toast'>) {
-  const action = useAction(submitPlacement)
+function useSubmit({ nav, flow, patch, toast }: Pick<ScreenProps, 'nav' | 'flow' | 'patch' | 'toast'>) {
+  const action = useAction(submitPlacement, { cooldownKey: 'submit' })
   const run = async (placement: PlacementDraft) => {
-    if (!flow.room || !flow.face) return
+    if (!flow.room || !flow.face || action.blocked) return
+    // 한 번도 옮기지 않은 기본 위치도 E02가 그대로 보여주고 같은 값으로 다시 보내야 한다.
+    if (!flow.placement) patch({ placement })
     try {
       await action.run(
         flow.room.roomId,
@@ -345,11 +363,12 @@ function useSubmit({ nav, flow, toast }: Pick<ScreenProps, 'nav' | 'flow' | 'toa
       nav('N09')
     } catch (e) {
       const next = onSubmitError(e)
+      if (isThrottled(e)) toast(errorMessage(e))
       if (next.kind === 'goto') nav(next.screen)
       else toast(next.message)
     }
   }
-  return { run, pending: action.pending }
+  return { run, pending: action.pending, blocked: action.blocked }
 }
 
 type Point = { x: number; y: number }
@@ -512,12 +531,7 @@ export function Placement(props: ScreenProps) {
           >
             {worldH > 0 && (
               <div className="place-world" style={{ width: worldW, transform: `translateX(${-ox}px)` }}>
-                <img
-                  className="scene-bg"
-                  src={assetUrl(background.url)}
-                  alt=""
-                  draggable={false}
-                />
+                <AssetImg className="scene-bg" src={assetUrl(background.url)} alt="" draggable={false} />
                 {[...others]
                   .sort((a, b) => a.zIndex - b.zIndex)
                   .map((c) => {
@@ -579,7 +593,7 @@ export function Placement(props: ScreenProps) {
         {maxOffset > 0 && <HScroll value={ox / maxOffset} onChange={(t) => setOffset(t * maxOffset)} />}
       </Body>
       <Foot>
-        <Cta disabled={!placement || submit.pending} onClick={() => placement && submit.run(placement)}>
+        <Cta disabled={!placement || submit.blocked} onClick={() => placement && submit.run(placement)}>
           {submit.pending ? '등록 중…' : '완료'}
         </Cta>
       </Foot>
@@ -624,7 +638,7 @@ function Finished(props: ScreenProps & { revisit: boolean }) {
   return (
     <Page>
       {/* N09R은 머리말 대신 남은 시간 게이지(Figma 21:1121). */}
-      <Head title={flow.room.title} sub={revisit ? undefined : '친구들과 함께 귀여운 이미지를 완성했어요!'} />
+      <Head title={flow.room.title} sub={revisit ? undefined : '친구들과 함께 귀여운 이미지를 완성했어요!'} home />
       {revisit && <RemainingBar label={remaining} ratio={ratio} />}
       <Body gap={24}>
         <ScenePreview
@@ -699,7 +713,7 @@ export function RegisterFailed(props: ScreenProps) {
         </div>
       </Body>
       <Foot>
-        <Cta disabled={submit.pending} onClick={() => submit.run(placement)}>
+        <Cta disabled={submit.blocked} onClick={() => submit.run(placement)}>
           {submit.pending ? '등록 중…' : '다시 등록'}
         </Cta>
         <Cta

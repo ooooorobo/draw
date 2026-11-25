@@ -1,10 +1,12 @@
-import { useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useRef, type ButtonHTMLAttributes, type ImgHTMLAttributes, type ReactNode } from 'react'
 import arrowsIcon from '../assets/icon-arrows-lr.svg'
 import clockIcon from '../assets/icon-clock.svg'
+import homeIcon from '../assets/icon-home.svg'
 import signCross from '../assets/sign-cross.svg'
 import signGrass from '../assets/sign-grass.svg'
 import signPlank from '../assets/sign-plank.svg'
 import signStake from '../assets/sign-stake.svg'
+import { useImageSrc } from '../lib/relay-draw/images.ts'
 import { containSize, useElementSize } from './layout.ts'
 
 /**
@@ -29,8 +31,8 @@ export function Head({
   sub,
   size,
   bold,
-  badge,
   plain,
+  home,
 }: {
   title: ReactNode
   sub?: ReactNode
@@ -41,21 +43,22 @@ export function Head({
    * 큰 제목(xl)·굵은 제목(N10)·오류 안내 화면(E01 등)은 Figma에서도 팻말이 없다.
    */
   plain?: boolean
-  /** 제목 오른쪽 배지(N04 "방 관리"). */
-  badge?: { label: string; onClick: () => void }
+  /** 제목 오른쪽 홈 버튼. */
+  home?: boolean
 }) {
   const sign = !plain && !bold && size !== 'xl'
   const cls = ['head-title', size === 'xl' && 'head-title--xl', bold && 'head-title--bold', sign && 'head-sign']
     .filter(Boolean)
     .join(' ')
   return (
-    <header className="head">
+    <header className={home ? 'head head--home' : 'head'}>
       <h1 className={cls}>{sign ? <span>{title}</span> : title}</h1>
       {sub !== undefined && <p className="head-sub">{sub}</p>}
-      {badge && (
-        <button type="button" className="badge" onClick={badge.onClick}>
-          {badge.label}
-        </button>
+      {home && (
+        // 방 링크 주소와 흐름 상태를 함께 버려야 해서 SPA 전이가 아니라 새로 불러온다.
+        <a className="home" href={import.meta.env.BASE_URL} aria-label="홈">
+          <img src={homeIcon} alt="" width={32} height={32} />
+        </a>
       )}
     </header>
   )
@@ -226,6 +229,12 @@ export function RemainingBar({ label, ratio }: { label: string; ratio: number })
       <img className="remain-clock" src={clockIcon} alt="" />
     </div>
   )
+}
+
+/** API 서버 이미지는 동시 요청 수를 제한하는 로더로 받는다(lib/relay-draw/images.ts). */
+export function AssetImg({ src, ...rest }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & { src: string }) {
+  const loaded = useImageSrc(src)
+  return <img src={loaded ?? undefined} {...rest} />
 }
 
 /** 짧은 안내(링크 복사됨 등). */

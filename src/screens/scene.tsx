@@ -5,7 +5,7 @@ import type { BackgroundViewV2, CharacterV2 } from '../lib/relay-draw/api-v2.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
 import { backgroundAspect, faceAssetUrl, labelAnchor, nameTag, spriteBox } from './character-art.ts'
 import { Sprite } from './character.tsx'
-import { Stage } from './ui.tsx'
+import { AssetImg, Stage } from './ui.tsx'
 
 /**
  * 현재 그림 / 배경 미리보기. 배경 위에 배치된 캐릭터를 zIndex 순으로 올린다.
@@ -44,7 +44,7 @@ export function ScenePreview({
     <Stage aspect={backgroundAspect(background)} maxHeight={maxHeight} maxWidth={maxWidth}>
       {(size) => (
         <div className="scene" style={{ width: size.width, height: size.height }}>
-          <img className="scene-bg" src={src} alt="" draggable={false} />
+          <AssetImg className="scene-bg" src={src} alt="" draggable={false} />
           {ordered.map((c) => {
             const box = spriteBox(c, size)
             return (

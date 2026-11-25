@@ -21,6 +21,9 @@ export const ERROR_CODES = {
   ROOM_CLOSED: 'ROOM_CLOSED', // 409 (생성 7일 후, 참여 종료)
   SCENE_CHANGED: 'SCENE_CHANGED', // 409 결과 저장 중 장면 버전 변경
   RESULT_EXISTS: 'RESULT_EXISTS', // 409 같은 버전 결과 중복 저장
+  RATE_LIMITED: 'RATE_LIMITED', // 429 IP별 요청 제한
+  ADMIN_RATE_LIMITED: 'ADMIN_RATE_LIMITED', // 429 방장 로그인 제한
+  SERVER_BUSY: 'SERVER_BUSY', // 429 서버 동시 처리 초과. Cloudtype가 503 본문을 바꿔서 429로 온다.
 } as const
 
 /**
@@ -38,11 +41,20 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError
 }
 
+/** 요청 제한(RATE_LIMITED·ADMIN_RATE_LIMITED)과 서버 혼잡(SERVER_BUSY). 구분은 status가 아니라 code로 한다. */
+export function isThrottled(error: unknown): error is ApiError {
+  return isApiError(error) && error.status === 429
+}
+
 /** 사용자에게 보여줄 문구. 서버 message가 한국어 사용자용이라 그대로 쓴다. */
 export function errorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.status === 413) return '파일이 너무 커요. 10MB 이하로 올려 주세요.'
-    if (error.status === 429) return '요청이 많아요. 잠시 후 다시 시도해 주세요.'
+    if (error.status === 429) {
+      return error.code === ERROR_CODES.SERVER_BUSY
+        ? '서버가 혼잡해요. 잠시 후 다시 시도해 주세요.'
+        : '요청이 많아요. 잠시 후 다시 시도해 주세요.'
+    }
     if (error.status >= 500) return '잠시 문제가 생겼어요. 다시 시도해 주세요.'
     return error.message
   }
@@ -72,9 +84,10 @@ export function onLoadError(error: unknown): ErrorAction {
   return { kind: 'retry', message: errorMessage(error) }
 }
 
-/** N02/N02P 사진 배경 업로드 실패 → E01. 크기 초과만 화면에 남는다. */
+/** N02/N02P 사진 배경 업로드 실패 → E01. 크기 초과와 429는 고른 사진을 둔 채 화면에 남는다. */
 export function onUploadError(error: unknown): ErrorAction {
   if (isApiError(error) && error.status === 413) return { kind: 'inline', message: errorMessage(error) }
+  if (isThrottled(error)) return { kind: 'retry', message: errorMessage(error) }
   return { kind: 'goto', screen: 'E01' }
 }
 
@@ -99,7 +112,7 @@ export function onCreateCharacterError(error: unknown): ErrorAction {
 }
 
 /**
- * N07 제출 실패. 방이 닫혔으면 N11, 없으면 E03, 그 외는 E02(그림·위치 유지 후 재등록).
+ * N07 제출 실패. 방이 닫혔으면 N11, 없으면 E03, 그 외는 429까지 E02(그림·위치 유지 후 재등록).
  * E02에서 재등록할 때 같은 Idempotency-Key·같은 파일을 써야 한다(screens.ts의 submitPlacement가 보장).
  */
 export function onSubmitError(error: unknown): ErrorAction {

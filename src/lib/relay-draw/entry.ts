@@ -15,6 +15,7 @@
 import { getApi } from './client.ts'
 import type { RoomV2 } from './api-v2.ts'
 import { onLoadError } from './errors.ts'
+import { retryThrottled } from './retry.ts'
 import { participationStore, type Participation } from './storage.ts'
 import { isLandscape } from './screens.ts'
 
@@ -59,7 +60,7 @@ export async function resolveEntry(href?: string, signal?: AbortSignal): Promise
 
   let room: RoomV2
   try {
-    room = (await getApi().room(ref.roomId, signal)) as unknown as RoomV2
+    room = (await retryThrottled(() => getApi().room(ref.roomId, signal), signal)) as unknown as RoomV2
   } catch (error) {
     const action = onLoadError(error)
     // 방 조회 단계의 goto는 없는 방·형식 오류·만료뿐이다(CLOSED 방은 200으로 온다).

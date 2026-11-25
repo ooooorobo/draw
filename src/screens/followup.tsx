@@ -373,7 +373,7 @@ type Transform = { x: number; y: number; scale: number; rotation: number }
 
 /** N10C — 삭제 확인. */
 export function DeleteConfirm({ nav, flow, patch, toast }: ScreenProps) {
-  const remove = useAction(deleteCharacters)
+  const remove = useAction(deleteCharacters, { cooldownKey: 'delete-character' })
   const target = flow.deleteTarget
   if (!flow.room || !target) return <Missing onBack={() => nav('N10')} />
   const roomId = flow.room.roomId
@@ -396,7 +396,7 @@ export function DeleteConfirm({ nav, flow, patch, toast }: ScreenProps) {
           취소
         </Cta>
         <Cta
-          disabled={remove.pending}
+          disabled={remove.blocked}
           onClick={async () => {
             try {
               await remove.run(roomId, [target.id])

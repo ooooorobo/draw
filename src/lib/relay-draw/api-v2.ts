@@ -12,7 +12,7 @@
  *   - Room/Scene의 managementMode·replayDurationMs, 배경 width/height, 캐릭터 artwork
  */
 import {
-  ApiError,
+  apiErrorFrom,
   type Asset,
   type BackgroundChoice,
   type Catalog,
@@ -95,13 +95,11 @@ export const ADMIN_PASSWORD_MAX = 64
 export const TITLE_MAX = 80
 export const NICKNAME_MAX = 10
 
-/** SDK의 private json()과 같은 동작. 오류 본문 {code, message}를 ApiError로 바꾼다. */
+/** SDK의 private json()과 같은 동작. 오류 본문 {code, message}와 Retry-After를 ApiError로 바꾼다. */
 async function request<T>(api: RelayDrawClient, path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(api.url(path), init)
   const data = await res.json().catch(() => null)
-  if (!res.ok) {
-    throw new ApiError(res.status, data?.code ?? 'HTTP_ERROR', data?.message ?? `HTTP ${res.status}`)
-  }
+  if (!res.ok) throw apiErrorFrom(res, data)
   return data as T
 }
 

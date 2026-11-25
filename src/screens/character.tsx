@@ -1,5 +1,6 @@
 import { useId, type CSSProperties } from 'react'
 import type { Artwork } from '../lib/relay-draw/api-v2.ts'
+import { useImageSrc } from '../lib/relay-draw/images.ts'
 import { assetUrl } from '../lib/relay-draw/screens.ts'
 import { drawClip, drawRect } from './character-art.ts'
 
@@ -23,6 +24,8 @@ export function Sprite({
   onClick?: () => void
 }) {
   const clipId = useId()
+  const body = useImageSrc(assetUrl(art.url))
+  const face = useImageSrc(faceUrl)
   const { width: cw, height: ch } = art.canvas
   const f = drawRect(art)
   const clip = drawClip(art)
@@ -36,8 +39,8 @@ export function Sprite({
       aria-hidden="true"
       onClick={onClick}
     >
-      <image href={assetUrl(art.url)} x={0} y={0} width={cw} height={ch} />
-      {faceUrl && (
+      {body && <image href={body} x={0} y={0} width={cw} height={ch} />}
+      {face && (
         <>
           {clip && (
             <clipPath id={clipId}>
@@ -54,7 +57,7 @@ export function Sprite({
             </clipPath>
           )}
           <image
-            href={faceUrl}
+            href={face}
             x={f.x}
             y={f.y}
             width={f.width}

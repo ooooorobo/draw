@@ -93,12 +93,45 @@ export class ApiError extends Error {
   // 백엔드가 api-client.ts를 갱신해 재복사할 때 이 부분만 다시 적용한다.
   readonly status: number;
   readonly code: string;
-  constructor(status: number, code: string, message: string) {
+  readonly retryAfterSeconds?: number;
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    retryAfterSeconds?: number,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+// 백엔드 SDK의 retryAfterSeconds 처리 사본. RATE_LIMITED는 헤더만, SERVER_BUSY는 헤더 또는 본문 값을 쓴다.
+export function apiErrorFrom(
+  res: Response,
+  data: { code?: string; message?: string; retryAfterSeconds?: unknown } | null,
+): ApiError {
+  const code = data?.code ?? "HTTP_ERROR";
+  const header = res.headers.get("retry-after")?.trim();
+  let seconds: number | undefined;
+  if (header) {
+    const delta = Number(header);
+    const until = Date.parse(header);
+    if (Number.isFinite(delta)) seconds = Math.max(0, delta);
+    else if (Number.isFinite(until))
+      seconds = Math.max(0, (until - Date.now()) / 1000);
+  }
+  if (seconds === undefined && code === "SERVER_BUSY") {
+    const body = Number(data?.retryAfterSeconds);
+    if (Number.isFinite(body)) seconds = body;
+  }
+  return new ApiError(
+    res.status,
+    code,
+    data?.message ?? `HTTP ${res.status}`,
+    seconds,
+  );
 }
 export class RelayDrawClient {
   readonly origin: string;
@@ -111,12 +144,7 @@ export class RelayDrawClient {
   private async json<T>(path: string, init: RequestInit = {}): Promise<T> {
     const res = await fetch(this.url(path), init);
     const data = await res.json().catch(() => null);
-    if (!res.ok)
-      throw new ApiError(
-        res.status,
-        data?.code ?? "HTTP_ERROR",
-        data?.message ?? `HTTP ${res.status}`,
-      );
+    if (!res.ok) throw apiErrorFrom(res, data);
     return data as T;
   }
   url(path: string) {
@@ -229,11 +257,7 @@ export class RelayDrawClient {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      throw new ApiError(
-        res.status,
-        data?.code ?? "HTTP_ERROR",
-        data?.message ?? `HTTP ${res.status}`,
-      );
+      throw apiErrorFrom(res, data);
     }
     return new Blob([await res.arrayBuffer()], { type: asset.mime });
   }

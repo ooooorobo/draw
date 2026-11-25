@@ -9,7 +9,7 @@ import { roomLink } from '../lib/relay-draw/entry.ts'
 import { assetUrl, createRoom, loadBackgrounds, loadRoom, shareRoom, uploadBackground } from '../lib/relay-draw/screens.ts'
 import { ScenePreview } from './scene.tsx'
 import type { FlowState, ScreenProps } from './types.ts'
-import { Body, Cta, ErrorNotice, Field, Foot, Head, Page } from './ui.tsx'
+import { AssetImg, Body, Cta, ErrorNotice, Field, Foot, Head, Page } from './ui.tsx'
 
 /** 방 제목 최대 길이. 서버는 80자까지 받지만 제목 팻말에 들어가게 8자로 묶는다. */
 const TITLE_MAX = 8
@@ -76,7 +76,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
   const [password, setPassword] = useState('')
   const backgrounds = useAsync(() => loadBackgrounds(), [])
   const picker = usePhotoPicker({ nav, patch, flow })
-  const create = useAction(createRoom)
+  const create = useAction(createRoom, { cooldownKey: 'create-room' })
   const [error, setError] = useState<string | null>(null)
 
   // 처음 들어오면 첫 기본 배경을 골라 둔다(디자인 진입 상태).
@@ -99,7 +99,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
   const ready = title.length > 0 && password.length >= ADMIN_PASSWORD_MIN && !!flow.background
 
   const submit = async () => {
-    if (!ready || !flow.background) return
+    if (!ready || !flow.background || create.blocked) return
     setError(null)
     try {
       const created = await create.run({ title, background: flow.background.choice, adminPassword: password })
@@ -119,7 +119,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
   return (
     <Page>
       {/* Figma: 배경 고르기 단계 "배경을 골라줘!"(17:431), 제목·비밀번호 단계 "방 만들기"(17:314). */}
-      <Head title={step === 'background' ? '배경을 골라줘!' : '방 만들기'} />
+      <Head title={step === 'background' ? '배경을 골라줘!' : '방 만들기'} home />
       <Body>
         {preview ? (
           <ScenePreview background={preview} maxHeight={step === 'background' ? 468 : 272} />
@@ -158,7 +158,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
                     })
                   }
                 >
-                  <img src={assetUrl(bg.url)} alt="" />
+                  <AssetImg src={assetUrl(bg.url)} alt="" />
                 </button>
               )
             })}
@@ -195,7 +195,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
             다음
           </Cta>
         ) : (
-          <Cta disabled={!ready || create.pending} onClick={submit}>
+          <Cta disabled={!ready || create.blocked} onClick={submit}>
             {create.pending ? '만드는 중…' : '다음'}
           </Cta>
         )}
@@ -207,7 +207,7 @@ export function CreateRoom({ nav, flow, patch, toast }: ScreenProps) {
 /** N02P / 업로드 배경 확인. "사용하기"를 누를 때 업로드한다. */
 export function BackgroundConfirm({ nav, flow, patch, toast }: ScreenProps) {
   const picker = usePhotoPicker({ nav, patch, flow })
-  const upload = useAction(uploadBackground)
+  const upload = useAction(uploadBackground, { cooldownKey: 'background-upload' })
   const photo = flow.pendingPhoto
 
   if (!photo) {
@@ -235,7 +235,7 @@ export function BackgroundConfirm({ nav, flow, patch, toast }: ScreenProps) {
 
   return (
     <Page>
-      <Head title="배경 확인" />
+      <Head title="배경 확인" home />
       <Body gap={32}>
         <ScenePreview
           background={{ url: '', previewUrl: photo.url, width: photo.width, height: photo.height }}
@@ -247,7 +247,7 @@ export function BackgroundConfirm({ nav, flow, patch, toast }: ScreenProps) {
         <Cta onClick={picker.open} disabled={upload.pending}>
           다시 선택
         </Cta>
-        <Cta onClick={use} disabled={upload.pending}>
+        <Cta onClick={use} disabled={upload.blocked}>
           {upload.pending ? '올리는 중…' : '사용하기'}
         </Cta>
       </Foot>
@@ -296,7 +296,7 @@ export function RoomCreated({ nav, flow, patch, toast }: ScreenProps) {
   return (
     <Page>
       {/* Figma 21:712: 제목 팻말은 "방 만들기" 그대로, 미리보기를 크게. */}
-      <Head title="방 만들기" />
+      <Head title="방 만들기" home />
       <Body>
         <ScenePreview background={preview} maxHeight={480} />
         <ul className="bullets">

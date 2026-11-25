@@ -34,8 +34,7 @@
   --tile-line: #bfbfbf;
   --error: #fd361b;
 
-  --badge-bg: #f7dbb4;
-  --badge-fg: #cd7b08;
+  --link: #685044;
   --selected: #ffe5a3;
   --tool-active: #ffe094;
   --track: #e5deb8;
@@ -222,19 +221,23 @@ button:disabled {
   line-height: 1.5;
 }
 
-/* 제목 오른쪽 위 "방 관리" 배지. 제목 줄(18px × 1.5)에 세로 가운데를 맞춘다. */
-.badge {
+/* 제목 오른쪽 홈 버튼(32×32). 제목 줄(18px × 1.5)에 세로 가운데를 맞춘다. */
+.home {
   position: absolute;
-  top: -2px;
+  top: -3px;
   right: 0;
-  border: 0;
-  border-radius: 40px;
-  padding: 6px 10px;
-  background: var(--badge-bg);
-  color: var(--badge-fg);
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: nowrap;
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+
+.home img {
+  display: block;
+}
+
+/* 긴 제목이 홈 버튼 밑으로 들어가지 않게 양쪽을 같이 비워 가운데 정렬을 유지한다. */
+.head--home .head-title {
+  padding: 0 40px;
 }
 
 /* ---------- 본문 ---------- */
@@ -463,6 +466,29 @@ button:disabled {
   object-fit: cover;
   pointer-events: none;
   user-select: none;
+}
+
+.scene-save {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  height: 32px;
+  padding: 0 9px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--ink-strong);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink-strong);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.scene-save:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .sprite {
